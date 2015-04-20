@@ -65,7 +65,7 @@ int usnic_arp_lookup(char *ifname, uint32_t ipaddr, int sockfd, uint8_t *macaddr
 	int			status;
 
 	memset(&req, 0, sizeof req);
-	strcpy(req.arp_dev, ifname);
+	strncpy(req.arp_dev, ifname, sizeof(req.arp_dev) - 1);
 	memset(&sinp, 0, sizeof(sinp));
 	sinp.sin_family = AF_INET;
 	sinp.sin_addr.s_addr = ipaddr;
@@ -76,6 +76,8 @@ int usnic_arp_lookup(char *ifname, uint32_t ipaddr, int sockfd, uint8_t *macaddr
 	if (status != -1 && (req.arp_flags & ATF_COM))
 		memcpy(macaddr, req.arp_ha.sa_data, 6);
 	else if (status != -1) /* req.arp_flags & ATF_COM == 0 */
+		err = EAGAIN;
+	else if (errno == ENXIO) /* ENXIO means no ARP entry was found */
 		err = EAGAIN;
 	else /* status == -1 */
 		err = errno;

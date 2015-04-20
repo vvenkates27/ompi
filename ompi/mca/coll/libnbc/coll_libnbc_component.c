@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2013-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
  * 
@@ -55,29 +55,27 @@ ompi_coll_libnbc_component_t mca_coll_libnbc_component = {
     {
         /* First, the mca_component_t struct containing meta information
          * about the component itself */
-        {
+        .collm_version = {
             MCA_COLL_BASE_VERSION_2_0_0,
 
             /* Component name and version */
-            "libnbc",
-            OMPI_MAJOR_VERSION,
-            OMPI_MINOR_VERSION,
-            OMPI_RELEASE_VERSION,
+            .mca_component_name = "libnbc",
+            MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION,
+                                  OMPI_RELEASE_VERSION),
 
             /* Component open and close functions */
-            libnbc_open,
-            libnbc_close,
-            NULL,
-            libnbc_register
+            .mca_open_component = libnbc_open,
+            .mca_close_component = libnbc_close,
+            .mca_register_component_params = libnbc_register,
         },
-        {
+        .collm_data = {
             /* The component is checkpoint ready */
             MCA_BASE_METADATA_PARAM_CHECKPOINT
         },
 
         /* Initialization / querying functions */
-        libnbc_init_query,
-        libnbc_comm_query
+        .collm_init_query = libnbc_init_query,
+        .collm_comm_query = libnbc_comm_query,
     }
 };
 
@@ -87,17 +85,14 @@ libnbc_open(void)
 {
     int ret;
 
-    OBJ_CONSTRUCT(&mca_coll_libnbc_component.requests, ompi_free_list_t);
-    ret = ompi_free_list_init(&mca_coll_libnbc_component.requests,
-                              sizeof(ompi_coll_libnbc_request_t),
-                              OBJ_CLASS(ompi_coll_libnbc_request_t),
-                              0,
-                              -1,
-                              8,
-                              NULL);
+    OBJ_CONSTRUCT(&mca_coll_libnbc_component.requests, opal_free_list_t);
+    OBJ_CONSTRUCT(&mca_coll_libnbc_component.active_requests, opal_list_t);
+    ret = opal_free_list_init (&mca_coll_libnbc_component.requests,
+                               sizeof(ompi_coll_libnbc_request_t), 8,
+                               OBJ_CLASS(ompi_coll_libnbc_request_t),
+                               0, 0, 0, -1, 8, NULL, 0, NULL, NULL, NULL);
     if (OMPI_SUCCESS != ret) return ret;
 
-    OBJ_CONSTRUCT(&mca_coll_libnbc_component.active_requests, opal_list_t);
     /* note: active comms is the number of communicators who have had
        a non-blocking collective started */
     mca_coll_libnbc_component.active_comms = 0;

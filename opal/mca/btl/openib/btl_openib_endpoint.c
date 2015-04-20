@@ -11,14 +11,14 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2013 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2006-2014 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2010-2011 IBM Corporation.  All rights reserved.
  * Copyright (c) 2010-2011 Oracle and/or its affiliates.  All rights reserved
  * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
- * Copyright (c) 2013      NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2013-2015 NVIDIA Corporation.  All rights reserved.
  * Copyright (c) 2014      Bull SAS.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
@@ -43,7 +43,7 @@
 #include "opal/util/output.h"
 #include "opal/util/proc.h"
 #include "opal/util/show_help.h"
-#include "opal/class/ompi_free_list.h"
+#include "opal/class/opal_free_list.h"
 
 #include "btl_openib_endpoint.h"
 #include "btl_openib_proc.h"
@@ -74,7 +74,7 @@ static inline int acquire_wqe(mca_btl_openib_endpoint_t *ep,
 int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
         mca_btl_openib_send_frag_t *frag)
 {
-    int prio = !(to_base_frag(frag)->base.des_flags & MCA_BTL_DES_FLAGS_PRIORITY);
+    int prio = to_base_frag(frag)->base.des_flags & MCA_BTL_DES_FLAGS_PRIORITY;
     mca_btl_openib_header_t *hdr = frag->hdr;
     mca_btl_base_descriptor_t *des = &to_base_frag(frag)->base;
     int qp, ib_rc, rc;
@@ -89,7 +89,7 @@ int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
     if(acquire_wqe(endpoint, frag) != OPAL_SUCCESS)
         return OPAL_ERR_RESOURCE_BUSY;
 
-    size = des->des_local->seg_len + frag->coalesced_length;
+    size = des->des_segments->seg_len + frag->coalesced_length;
 
     rc = mca_btl_openib_endpoint_credit_acquire (endpoint, qp, prio, size,
                                                  &do_rdma, frag, true);
@@ -492,7 +492,7 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
     base_des->des_cbdata = NULL;
     base_des->des_flags |= MCA_BTL_DES_FLAGS_PRIORITY|MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
     base_des->order = mca_btl_openib_component.credits_qp;
-    openib_frag->segment.base.seg_len = sizeof(mca_btl_openib_control_header_t);
+    openib_frag->segment.seg_len = sizeof(mca_btl_openib_control_header_t);
     com_frag->endpoint = endpoint;
 
     sc_frag->hdr->tag = MCA_BTL_TAG_IB;
@@ -500,7 +500,7 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
     sc_frag->hdr->credits = 0;
 
     ctl_hdr = (mca_btl_openib_control_header_t*)
-        openib_frag->segment.base.seg_addr.pval;
+        openib_frag->segment.seg_addr.pval;
     ctl_hdr->type = MCA_BTL_OPENIB_CONTROL_CTS;
 
     /* Send the fragment */
@@ -727,13 +727,13 @@ void mca_btl_openib_endpoint_send_credits(mca_btl_openib_endpoint_t* endpoint,
         to_base_frag(frag)->base.des_flags |= MCA_BTL_DES_SEND_ALWAYS_CALLBACK;;
         to_com_frag(frag)->endpoint = endpoint;
         frag->hdr->tag = MCA_BTL_TAG_IB;
-        to_base_frag(frag)->segment.base.seg_len =
+        to_base_frag(frag)->segment.seg_len =
             sizeof(mca_btl_openib_rdma_credits_header_t);
     }
 
     assert(frag->qp_idx == qp);
     credits_hdr = (mca_btl_openib_rdma_credits_header_t*)
-        to_base_frag(frag)->segment.base.seg_addr.pval;
+        to_base_frag(frag)->segment.seg_addr.pval;
     if(OPAL_SUCCESS == acquire_eager_rdma_send_credit(endpoint)) {
         do_rdma = true;
     } else {
@@ -818,12 +818,12 @@ static int mca_btl_openib_endpoint_send_eager_rdma(
     to_base_frag(frag)->base.des_cbdata = NULL;
     to_base_frag(frag)->base.des_flags |= MCA_BTL_DES_FLAGS_PRIORITY|MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
     to_base_frag(frag)->base.order = mca_btl_openib_component.credits_qp;
-    to_base_frag(frag)->segment.base.seg_len =
+    to_base_frag(frag)->segment.seg_len =
         sizeof(mca_btl_openib_eager_rdma_header_t);
     to_com_frag(frag)->endpoint = endpoint;
 
     frag->hdr->tag = MCA_BTL_TAG_IB;
-    rdma_hdr = (mca_btl_openib_eager_rdma_header_t*)to_base_frag(frag)->segment.base.seg_addr.pval;
+    rdma_hdr = (mca_btl_openib_eager_rdma_header_t*)to_base_frag(frag)->segment.seg_addr.pval;
     rdma_hdr->control.type = MCA_BTL_OPENIB_CONTROL_RDMA;
     rdma_hdr->rkey = endpoint->eager_rdma_local.reg->mr->rkey;
     rdma_hdr->rdma_start.lval = opal_ptr_ptol(endpoint->eager_rdma_local.base.pval);
@@ -908,11 +908,11 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
         sizeof(mca_btl_openib_header_t);
 
     for(i = 0; i < mca_btl_openib_component.eager_rdma_num; i++) {
-        ompi_free_list_item_t *item;
+        opal_free_list_item_t *item;
         mca_btl_openib_recv_frag_t * frag;
         mca_btl_openib_frag_init_data_t init_data;
 
-        item = (ompi_free_list_item_t*)&headers_buf[i];
+        item = (opal_free_list_item_t*)&headers_buf[i];
         item->registration = (mca_mpool_base_registration_t *)endpoint->eager_rdma_local.reg;
         item->ptr = buf + i * openib_btl->eager_rdma_frag_size;
         OBJ_CONSTRUCT(item, mca_btl_openib_recv_frag_t);
@@ -925,7 +925,7 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
         to_base_frag(frag)->type = MCA_BTL_OPENIB_FRAG_EAGER_RDMA;
         to_com_frag(frag)->endpoint = endpoint;
         frag->ftr = (mca_btl_openib_footer_t*)
-            ((char*)to_base_frag(frag)->segment.base.seg_addr.pval +
+            ((char*)to_base_frag(frag)->segment.seg_addr.pval +
              mca_btl_openib_component.eager_limit);
 
         MCA_BTL_OPENIB_RDMA_MAKE_REMOTE(frag->ftr);

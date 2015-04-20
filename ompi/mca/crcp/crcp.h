@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -9,6 +10,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
+ *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -28,13 +31,13 @@
 #include "ompi_config.h"
 
 #include "opal/class/opal_object.h"
-#include "opal/mca/mca.h"
+#include "ompi/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 #include "opal/mca/btl/btl.h"
 #include "opal/mca/btl/base/base.h"
-#include "opal/class/ompi_free_list.h"
+#include "opal/class/opal_free_list.h"
 
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/request/request.h"
@@ -91,7 +94,7 @@ enum ompi_crcp_base_pml_states_t {
 typedef enum ompi_crcp_base_pml_states_t ompi_crcp_base_pml_states_t;
 
 struct ompi_crcp_base_pml_state_t {
-    ompi_free_list_item_t super;
+    opal_free_list_item_t super;
     ompi_crcp_base_pml_states_t state;
     int error_code;
     mca_pml_base_component_t  *wrapped_pml_component;
@@ -183,7 +186,7 @@ enum ompi_crcp_base_btl_states_t {
 typedef enum ompi_crcp_base_btl_states_t ompi_crcp_base_btl_states_t;
 
 struct ompi_crcp_base_btl_state_t {
-    ompi_free_list_item_t super;
+    opal_free_list_item_t super;
     ompi_crcp_base_btl_states_t state;
     int error_code;
     mca_btl_base_descriptor_t* des;
@@ -361,8 +364,7 @@ OMPI_DECLSPEC extern ompi_crcp_base_module_t ompi_crcp;
  * Macro for use in components that are of type CRCP
  */
 #define OMPI_CRCP_BASE_VERSION_2_0_0 \
-    MCA_BASE_VERSION_2_0_0, \
-    "crcp", 2, 0, 0
+    OMPI_MCA_BASE_VERSION_2_1_0("crcp", 2, 0, 0)
 
 /**
  * Macro to call the CRCP Request Complete function

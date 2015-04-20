@@ -15,6 +15,8 @@
  * Copyright (c) 2007-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2013-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -78,6 +80,7 @@
 
 #include "opal/version.h"
 #include "opal/runtime/opal.h"
+#include "opal/runtime/opal_info_support.h"
 #include "opal/util/os_path.h"
 #include "opal/util/path.h"
 #include "opal/class/opal_pointer_array.h"
@@ -85,6 +88,9 @@
 
 #include "orte/mca/odls/odls_types.h"
 #include "orte/mca/plm/plm.h"
+#include "orte/mca/rmaps/rmaps_types.h"
+#include "orte/mca/rmaps/base/base.h"
+
 #include "orte/mca/schizo/schizo.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
@@ -128,6 +134,21 @@ static struct {
     char *basename;
     char *prefix;
     bool terminate;
+    bool nolocal;
+    bool no_oversubscribe;
+    bool oversubscribe;
+    int cpus_per_proc;
+    bool pernode;
+    int npernode;
+    bool use_hwthreads_as_cpus;
+    int npersocket;
+    char *mapping_policy;
+    char *ranking_policy;
+    char *binding_policy;
+    bool report_bindings;
+    char *slot_list;
+    bool debug;
+    bool run_as_root;
 } myglobals;
 
 static opal_cmd_line_init_t cmd_line_init[] = {
@@ -195,94 +216,79 @@ static opal_cmd_line_init_t cmd_line_init[] = {
       "Export an environment variable, optionally specifying a value (e.g., \"-x foo\" exports the environment variable foo and takes its value from the current environment; \"-x foo=bar\" exports the environment variable name foo and sets its value to \"bar\" in the started processes)" },
 
       /* Mapping controls */
-    { "rmaps_base_display_map", '\0', "display-map", "display-map", 0,
-      NULL, OPAL_CMD_LINE_TYPE_BOOL,
-      "Display the process map just before launch"},
-    { "rmaps_base_display_devel_map", '\0', "display-devel-map", "display-devel-map", 0,
-       NULL, OPAL_CMD_LINE_TYPE_BOOL,
-       "Display a detailed process map (mostly intended for developers) just before launch"},
-    { "rmaps_base_display_topo_with_map", '\0', "display-topo", "display-topo", 0,
-       NULL, OPAL_CMD_LINE_TYPE_BOOL,
-       "Display the topology as part of the process map (mostly intended for developers) just before launch"},
-    { "rmaps_base_display_diffable_map", '\0', "display-diffable-map", "display-diffable-map", 0,
-       NULL, OPAL_CMD_LINE_TYPE_BOOL,
-       "Display a diffable process map (mostly intended for developers) just before launch"},
     { NULL, 'H', "host", "host", 1,
       NULL, OPAL_CMD_LINE_TYPE_STRING,
       "List of hosts to invoke processes on" },
-    { "rmaps_base_no_schedule_local", '\0', "nolocal", "nolocal", 0,
-      NULL, OPAL_CMD_LINE_TYPE_BOOL,
+    { NULL, '\0', "nolocal", "nolocal", 0,
+      &myglobals.nolocal, OPAL_CMD_LINE_TYPE_BOOL,
       "Do not run any MPI applications on the local node" },
-    { "rmaps_base_no_oversubscribe", '\0', "nooversubscribe", "nooversubscribe", 0,
-      NULL, OPAL_CMD_LINE_TYPE_BOOL,
+    { NULL, '\0', "nooversubscribe", "nooversubscribe", 0,
+      &myglobals.no_oversubscribe, OPAL_CMD_LINE_TYPE_BOOL,
       "Nodes are not to be oversubscribed, even if the system supports such operation"},
-    { "rmaps_base_oversubscribe", '\0', "oversubscribe", "oversubscribe", 0,
-      NULL, OPAL_CMD_LINE_TYPE_BOOL,
+    { NULL, '\0', "oversubscribe", "oversubscribe", 0,
+      &myglobals.oversubscribe, OPAL_CMD_LINE_TYPE_BOOL,
       "Nodes are allowed to be oversubscribed, even on a managed system, and overloading of processing elements"},
-    { "rmaps_base_cpus_per_rank", '\0', "cpus-per-proc", "cpus-per-proc", 1,
-      NULL, OPAL_CMD_LINE_TYPE_INT,
+    { NULL, '\0', "cpus-per-proc", "cpus-per-proc", 1,
+      &myglobals.cpus_per_proc, OPAL_CMD_LINE_TYPE_INT,
       "Number of cpus to use for each process [default=1]" },
-    { "rmaps_base_cpus_per_rank", '\0', "cpus-per-rank", "cpus-per-rank", 1,
-      NULL, OPAL_CMD_LINE_TYPE_INT,
-      "Synonym for cpus-per-proc" },
 
     /* Nperxxx options that do not require topology and are always
      * available - included for backwards compatibility
      */
-    { "rmaps_ppr_pernode", '\0', "pernode", "pernode", 0,
-      NULL, OPAL_CMD_LINE_TYPE_BOOL,
+    { NULL, '\0', "pernode", "pernode", 0,
+      &myglobals.pernode, OPAL_CMD_LINE_TYPE_BOOL,
       "Launch one process per available node" },
-    { "rmaps_ppr_n_pernode", '\0', "npernode", "npernode", 1,
-        NULL, OPAL_CMD_LINE_TYPE_INT,
-        "Launch n processes per node on all allocated nodes" },
-    { "rmaps_ppr_n_pernode", '\0', "N", NULL, 1,
-        NULL, OPAL_CMD_LINE_TYPE_INT,
+    { NULL, '\0', "npernode", "npernode", 1,
+      &myglobals.npernode, OPAL_CMD_LINE_TYPE_INT,
+      "Launch n processes per node on all allocated nodes" },
+    { NULL, '\0', "N", NULL, 1,
+      &myglobals.npernode, OPAL_CMD_LINE_TYPE_INT,
         "Launch n processes per node on all allocated nodes (synonym for npernode)" },
 
 #if OPAL_HAVE_HWLOC
     /* declare hardware threads as independent cpus */
-    { "hwloc_base_use_hwthreads_as_cpus", '\0', "use-hwthread-cpus", "use-hwthread-cpus", 0,
-      NULL, OPAL_CMD_LINE_TYPE_BOOL,
+    { NULL, '\0', "use-hwthread-cpus", "use-hwthread-cpus", 0,
+      &myglobals.use_hwthreads_as_cpus, OPAL_CMD_LINE_TYPE_BOOL,
       "Use hardware threads as independent cpus" },
 
     /* include npersocket for backwards compatibility */
-    { "rmaps_ppr_n_persocket", '\0', "npersocket", "npersocket", 1,
-      NULL, OPAL_CMD_LINE_TYPE_INT,
+    { NULL, '\0', "npersocket", "npersocket", 1,
+      &myglobals.npersocket, OPAL_CMD_LINE_TYPE_INT,
       "Launch n processes per socket on all allocated nodes" },
 
     /* Mapping options */
-    { "rmaps_base_mapping_policy", '\0', NULL, "map-by", 1,
-      NULL, OPAL_CMD_LINE_TYPE_STRING,
+    { NULL, '\0', NULL, "map-by", 1,
+      &myglobals.mapping_policy, OPAL_CMD_LINE_TYPE_STRING,
       "Mapping Policy [slot | hwthread | core | socket (default) | numa | board | node]" },
 
       /* Ranking options */
-    { "rmaps_base_ranking_policy", '\0', NULL, "rank-by", 1,
-      NULL, OPAL_CMD_LINE_TYPE_STRING,
+    { NULL, '\0', NULL, "rank-by", 1,
+      &myglobals.ranking_policy, OPAL_CMD_LINE_TYPE_STRING,
       "Ranking Policy [slot (default) | hwthread | core | socket | numa | board | node]" },
 
       /* Binding options */
-    { "hwloc_base_binding_policy", '\0', NULL, "bind-to", 1,
-      NULL, OPAL_CMD_LINE_TYPE_STRING,
+    { NULL, '\0', NULL, "bind-to", 1,
+      &myglobals.binding_policy, OPAL_CMD_LINE_TYPE_STRING,
       "Policy for binding processes. Allowed values: none, hwthread, core, l1cache, l2cache, l3cache, socket, numa, board (\"none\" is the default when oversubscribed, \"core\" is the default when np<=2, and \"socket\" is the default when np>2). Allowed qualifiers: overload-allowed, if-supported" },
 
-    { "hwloc_base_report_bindings", '\0', "report-bindings", "report-bindings", 0,
-      NULL, OPAL_CMD_LINE_TYPE_BOOL,
+    { NULL, '\0', "report-bindings", "report-bindings", 0,
+      &myglobals.report_bindings, OPAL_CMD_LINE_TYPE_BOOL,
       "Whether to report process bindings to stderr" },
 
     /* slot list option */
-    { "hwloc_base_slot_list", '\0', "slot-list", "slot-list", 1,
-      NULL, OPAL_CMD_LINE_TYPE_STRING,
+    { NULL, '\0', "slot-list", "slot-list", 1,
+      &myglobals.slot_list, OPAL_CMD_LINE_TYPE_STRING,
       "List of processor IDs to bind processes to [default=NULL]"},
 
 #else
     /* Mapping options */
-    { "rmaps_base_mapping_policy", '\0', NULL, "map-by", 1,
-      NULL, OPAL_CMD_LINE_TYPE_STRING,
+    { NULL, '\0', NULL, "map-by", 1,
+      &myglobals.mapping_policy, OPAL_CMD_LINE_TYPE_STRING,
       "Mapping Policy [slot (default) | node]" },
 
       /* Ranking options */
-    { "rmaps_base_ranking_policy", '\0', NULL, "rank-by", 1,
-      NULL, OPAL_CMD_LINE_TYPE_STRING,
+    { NULL, '\0', NULL, "rank-by", 1,
+      &myglobals.ranking_policy, OPAL_CMD_LINE_TYPE_STRING,
       "Ranking Policy [slot (default) | node]" },
 #endif
 
@@ -308,7 +314,15 @@ static opal_cmd_line_init_t cmd_line_init[] = {
       &myglobals.personality, OPAL_CMD_LINE_TYPE_STRING,
       "Programming model/language being used (default=\"ompi\")" },
 
-    /* End of list */
+    { NULL, 'd', "debug-devel", "debug-devel", 0,
+      &myglobals.debug, OPAL_CMD_LINE_TYPE_BOOL,
+      "Enable debugging of OpenRTE" },
+    
+    { NULL, '\0', "allow-run-as-root", "allow-run-as-root", 0,
+      &myglobals.run_as_root, OPAL_CMD_LINE_TYPE_BOOL,
+      "Allow execution as root (STRONGLY DISCOURAGED)" },
+
+/* End of list */
     { NULL, '\0', NULL, NULL, 0,
       NULL, OPAL_CMD_LINE_TYPE_NULL, NULL }
 };
@@ -336,11 +350,10 @@ static void spawn_recv(int status, orte_process_name_t* sender,
 
 int main(int argc, char *argv[])
 {
-    int rc;
+    int rc, i;
     opal_cmd_line_t cmd_line;
     char *param;
     orte_job_t *jdata=NULL;
-    char *hnpenv;
     opal_buffer_t *req;
     orte_daemon_cmd_flag_t cmd = ORTE_DAEMON_SPAWN_JOB_CMD;
     
@@ -360,6 +373,45 @@ int main(int argc, char *argv[])
                     opal_strerror(rc));
         }
         return rc;
+    }
+
+    /* print version if requested.  Do this before check for help so
+       that --version --help works as one might expect. */
+    if (myglobals.version) {
+        char *str;
+        str = opal_info_make_version_str("all", 
+                                         OPAL_MAJOR_VERSION, OPAL_MINOR_VERSION, 
+                                         OPAL_RELEASE_VERSION, 
+                                         OPAL_GREEK_VERSION,
+                                         OPAL_REPO_REV);
+        if (NULL != str) {
+            fprintf(stdout, "%s %s\n\nReport bugs to %s\n",
+                    myglobals.basename, str, PACKAGE_BUGREPORT);
+            free(str);
+        }
+        exit(0);
+    }
+
+    /* check if we are running as root - if we are, then only allow
+     * us to proceed if the allow-run-as-root flag was given. Otherwise,
+     * exit with a giant warning flag
+     */
+    if (0 == geteuid() && !myglobals.run_as_root) {
+        fprintf(stderr, "--------------------------------------------------------------------------\n");
+        if (myglobals.help) {
+            fprintf(stderr, "%s cannot provide the help message when run as root\n", myglobals.basename);
+        } else {
+            /* show_help is not yet available, so print an error manually */
+            fprintf(stderr, "%s has detected an attempt to run as root.\n", myglobals.basename);
+        }
+        fprintf(stderr, " This is *strongly* discouraged as any mistake (e.g., in defining TMPDIR) or bug can\n");
+        fprintf(stderr, "result in catastrophic damage to the OS file system, leaving\n");
+        fprintf(stderr, "your system in an unusable state.\n\n");
+        fprintf(stderr, "You can override this protection by adding the --allow-run-as-root\n");
+        fprintf(stderr, "option to your cmd line. However, we reiterate our strong advice\n");
+        fprintf(stderr, "against doing so - please do so at your own risk.\n");
+        fprintf(stderr, "--------------------------------------------------------------------------\n");
+        exit(1);
     }
 
     /*
@@ -389,7 +441,7 @@ int main(int argc, char *argv[])
     
     /* Check for some "global" command line params */
     parse_globals(argc, argv, &cmd_line);
-
+    
     /* if they didn't point us at an HNP, that's an error */
     if (NULL == myglobals.hnp) {
         fprintf(stderr, "orte-submit: required option --hnp not provided\n");
@@ -397,8 +449,7 @@ int main(int argc, char *argv[])
     }
     OBJ_DESTRUCT(&cmd_line);
 
-    if (0 == strncmp(myglobals.hnp, "file", strlen("file")) ||
-        0 == strncmp(myglobals.hnp, "FILE", strlen("FILE"))) {
+    if (0 == strncasecmp(myglobals.hnp, "file", strlen("file"))) {
         char input[1024], *filename;
         FILE *fp;
             
@@ -432,19 +483,26 @@ int main(int argc, char *argv[])
         fclose(fp);
         input[strlen(input)-1] = '\0';  /* remove newline */
         /* construct the target hnp info */
-        asprintf(&hnpenv, "OMPI_MCA_orte_hnp_uri=%s", input);
+        opal_setenv("OMPI_MCA_orte_hnp_uri", input, true, &environ);
     } else {
         /* should just be the uri itself - construct the target hnp info */
-        asprintf(&hnpenv, "OMPI_MCA_orte_hnp_uri=%s", myglobals.hnp);
+        opal_setenv("OMPI_MCA_orte_hnp_uri", myglobals.hnp, true, &environ);
     }
-    putenv(hnpenv);  // must not free
-    
+
     /* Setup MCA params */
     orte_register_params();
 
     /* flag that I am a TOOL */
     orte_process_info.proc_type = ORTE_PROC_TOOL;
+
+    /* we are never allowed to operate as a distributed tool,
+     * so insist on the ess/tool component */
+    opal_setenv("OMPI_MCA_ess", "tool", true, &environ);
     
+    if (myglobals.debug) {
+        orte_devel_level_output = true;
+    }
+
    /* Intialize our Open RTE environment
      * Set the flag telling orte_init that I am NOT a
      * singleton, but am "infrastructure" - prevents setting
@@ -462,6 +520,12 @@ int main(int argc, char *argv[])
      */
     opal_finalize();
 
+    for (i=0; NULL != environ[i]; i++) {
+        if (0 == strncmp(environ[i], "OMPI", 4)) {
+            fprintf(stderr, "%s\n", environ[i]);
+        }
+    }
+    
     /* set the info in our contact table */
     orte_rml.set_contact_info(orte_process_info.my_hnp_uri);
     /* extract the name */
@@ -488,7 +552,7 @@ int main(int argc, char *argv[])
     /* if this is the terminate command, just send it */
     if (myglobals.terminate) {
         opal_buffer_t *buf;
-        orte_daemon_cmd_flag_t cmd = ORTE_DAEMON_HALT_VM_CMD;
+        orte_daemon_cmd_flag_t cmd = ORTE_DAEMON_HALT_DVM_CMD;
         buf = OBJ_NEW(opal_buffer_t);
         opal_dss.pack(buf, &cmd, 1, ORTE_DAEMON_CMD);
         orte_rml.send_buffer_nb(ORTE_PROC_MY_HNP, buf,
@@ -533,6 +597,56 @@ int main(int argc, char *argv[])
 
     /* Parse each app, adding it to the job object */
     parse_locals(jdata, argc, argv);
+
+    /* create the map object to communicate policies */
+    jdata->map = OBJ_NEW(orte_job_map_t);
+    
+    if (NULL != myglobals.mapping_policy) {
+        if (ORTE_SUCCESS != (rc = orte_rmaps_base_set_mapping_policy(&jdata->map->mapping, NULL, myglobals.mapping_policy))) {
+            ORTE_ERROR_LOG(rc);
+            exit(rc);
+        }
+    }
+    if (NULL != myglobals.ranking_policy) {
+        if (ORTE_SUCCESS != (rc = orte_rmaps_base_set_ranking_policy(&jdata->map->ranking,
+                                                                     jdata->map->mapping,
+                                                                     myglobals.ranking_policy))) {
+            ORTE_ERROR_LOG(rc);
+            exit(rc);
+        }
+    }
+#if OPAL_HAVE_HWLOC
+    if (NULL != myglobals.binding_policy) {
+        if (ORTE_SUCCESS != (rc = opal_hwloc_base_set_binding_policy(&jdata->map->binding,
+                                                                     myglobals.binding_policy))) {
+            ORTE_ERROR_LOG(rc);
+            exit(rc);
+        }
+    }
+#endif /* OPAL_HAVE_HWLOC */
+    
+    /* if they asked for nolocal, mark it so */
+    if (myglobals.nolocal) {
+        ORTE_SET_MAPPING_DIRECTIVE(jdata->map->mapping, ORTE_MAPPING_NO_USE_LOCAL);
+    }
+    if (myglobals.no_oversubscribe) {
+        ORTE_UNSET_MAPPING_DIRECTIVE(jdata->map->mapping, ORTE_MAPPING_NO_OVERSUBSCRIBE);
+    }
+    if (myglobals.oversubscribe) {
+        ORTE_UNSET_MAPPING_DIRECTIVE(jdata->map->mapping, ORTE_MAPPING_NO_OVERSUBSCRIBE);
+    }
+    if (myglobals.report_bindings) {
+        orte_set_attribute(&jdata->attributes, ORTE_JOB_REPORT_BINDINGS, ORTE_ATTR_GLOBAL, NULL, OPAL_BOOL);
+    }
+    if (myglobals.slot_list) {
+        orte_set_attribute(&jdata->attributes, ORTE_JOB_SLOT_LIST, ORTE_ATTR_GLOBAL, myglobals.slot_list, OPAL_STRING);
+    }
+    if (NULL == myglobals.personality) {
+        /* default to ompi */
+        jdata->personality = strdup("ompi");
+    } else {
+        jdata->personality = strdup(myglobals.personality);
+    }
     
     if (0 == jdata->num_apps) {
         /* This should never happen -- this case should be caught in
@@ -627,50 +741,6 @@ static int init_globals(void)
 
 static int parse_globals(int argc, char* argv[], opal_cmd_line_t *cmd_line)
 {
-    /* print version if requested.  Do this before check for help so
-       that --version --help works as one might expect. */
-    if (myglobals.version) {
-        char *str, *project_name = NULL;
-        if (0 == strcmp(myglobals.basename, "ompi-submit")) {
-            project_name = "Open MPI";
-        } else {
-            project_name = "OpenRTE";
-        }
-        str = opal_show_help_string("help-orterun.txt", "orterun:version", 
-                                    false,
-                                    myglobals.basename, project_name, OPAL_VERSION,
-                                    PACKAGE_BUGREPORT);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
-        exit(0);
-    }
-
-    /* Check for help request */
-    if (myglobals.help) {
-        char *str, *args = NULL;
-        char *project_name = NULL;
-        if (0 == strcmp(myglobals.basename, "ompi-submit")) {
-            project_name = "Open MPI";
-        } else {
-            project_name = "OpenRTE";
-        }
-        args = opal_cmd_line_get_usage_msg(cmd_line);
-        str = opal_show_help_string("help-orterun.txt", "orterun:usage", false,
-                                    myglobals.basename, project_name, OPAL_VERSION,
-                                    myglobals.basename, args,
-                                    PACKAGE_BUGREPORT);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
-        free(args);
-
-        /* If someone asks for help, that should be all we do */
-        exit(0);
-    }
-
     /* check for request to report pid */
     if (NULL != myglobals.report_pid) {
         FILE *fp;
@@ -1027,7 +1097,7 @@ static int create_app(int argc, char* argv[],
                 }
                 free(value);
             } else if (NULL != myglobals.prefix) {
-                param = myglobals.prefix;
+                param = strdup(myglobals.prefix);
             } else if (opal_cmd_line_is_taken(&cmd_line, "prefix")){
                 /* must be --prefix alone */
                 param = strdup(opal_cmd_line_get_param(&cmd_line, "prefix", 0, 0));
@@ -1045,6 +1115,7 @@ static int create_app(int argc, char* argv[],
                     if (0 == param_len) {
                         orte_show_help("help-orterun.txt", "orterun:empty-prefix",
                                        true, myglobals.basename, myglobals.basename);
+                        free(param);
                         return ORTE_ERR_FATAL;
                     }
                 }
@@ -1065,7 +1136,7 @@ static int create_app(int argc, char* argv[],
             return ORTE_ERR_FATAL;
         } else {
             value = opal_cmd_line_get_param(&cmd_line, "hostfile", 0, 0);
-            orte_set_attribute(&app->attributes, ORTE_APP_HOSTFILE, ORTE_ATTR_LOCAL, value, OPAL_STRING);
+            orte_set_attribute(&app->attributes, ORTE_APP_HOSTFILE, ORTE_ATTR_GLOBAL, value, OPAL_STRING);
         }
     }
     if (0 < (j = opal_cmd_line_get_ninsts(&cmd_line, "machinefile"))) {
@@ -1075,7 +1146,7 @@ static int create_app(int argc, char* argv[],
             return ORTE_ERR_FATAL;
         } else {
             value = opal_cmd_line_get_param(&cmd_line, "machinefile", 0, 0);
-            orte_set_attribute(&app->attributes, ORTE_APP_HOSTFILE, ORTE_ATTR_LOCAL, value, OPAL_STRING);
+            orte_set_attribute(&app->attributes, ORTE_APP_HOSTFILE, ORTE_ATTR_GLOBAL, value, OPAL_STRING);
         }
     }
  
@@ -1087,7 +1158,7 @@ static int create_app(int argc, char* argv[],
             opal_argv_append_nosize(&targ, value);
         }
         tval = opal_argv_join(targ, ',');
-        orte_set_attribute(&app->attributes, ORTE_APP_DASH_HOST, ORTE_ATTR_LOCAL, tval, OPAL_STRING);
+        orte_set_attribute(&app->attributes, ORTE_APP_DASH_HOST, ORTE_ATTR_GLOBAL, tval, OPAL_STRING);
         opal_argv_free(targ);
         free(tval);
     }
@@ -1105,7 +1176,7 @@ static int create_app(int argc, char* argv[],
 
     /* Capture any preload flags */
     if (myglobals.preload_binaries) {
-        orte_set_attribute(&app->attributes, ORTE_APP_PRELOAD_BIN, ORTE_ATTR_LOCAL, NULL, OPAL_BOOL);
+        orte_set_attribute(&app->attributes, ORTE_APP_PRELOAD_BIN, ORTE_ATTR_GLOBAL, NULL, OPAL_BOOL);
     }
     /* if we were told to cwd to the session dir and the app was given in
      * relative syntax, then we need to preload the binary to
@@ -1118,11 +1189,11 @@ static int create_app(int argc, char* argv[],
         if (myglobals.preload_binaries) {
             orte_set_attribute(&app->attributes, ORTE_APP_SSNDIR_CWD, ORTE_ATTR_GLOBAL, NULL, OPAL_BOOL);
         } else if (orte_get_attribute(&app->attributes, ORTE_APP_SSNDIR_CWD, NULL, OPAL_BOOL)) {
-            orte_set_attribute(&app->attributes, ORTE_APP_PRELOAD_BIN, ORTE_ATTR_LOCAL, NULL, OPAL_BOOL);
+            orte_set_attribute(&app->attributes, ORTE_APP_PRELOAD_BIN, ORTE_ATTR_GLOBAL, NULL, OPAL_BOOL);
         }
     }
     if (NULL != myglobals.preload_files) {
-        orte_set_attribute(&app->attributes, ORTE_APP_PRELOAD_FILES, ORTE_ATTR_LOCAL,
+        orte_set_attribute(&app->attributes, ORTE_APP_PRELOAD_FILES, ORTE_ATTR_GLOBAL,
                            myglobals.preload_files, OPAL_STRING);
     }
 
@@ -1422,6 +1493,8 @@ static int parse_appfile(orte_job_t *jdata, char *filename, char ***env)
             if (NULL != *env) {
                 tmp_env = opal_argv_copy(*env);
                 if (NULL == tmp_env) {
+                    fclose(fp);
+                    opal_argv_free(argv);
                     return ORTE_ERR_OUT_OF_RESOURCE;
                 }
             } else {
@@ -1437,6 +1510,7 @@ static int parse_appfile(orte_job_t *jdata, char *filename, char ***env)
             if (NULL != tmp_env) {
                 opal_argv_free(tmp_env);
             }
+            opal_argv_free(argv);
             if (made_app) {
                 app->idx = app_num;
                 ++app_num;
@@ -1450,6 +1524,7 @@ static int parse_appfile(orte_job_t *jdata, char *filename, char ***env)
     /* All done */
 
     free(filename);
+    
     return ORTE_SUCCESS;
 }
 

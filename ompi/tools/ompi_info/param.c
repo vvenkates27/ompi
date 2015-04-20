@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2014 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
@@ -118,7 +118,7 @@ void ompi_info_do_config(bool want_all)
     char *fortran_usempif08_profiling;
     char *cxxexceptions;
     char *threads;
-    char *want_libltdl;
+    char *have_dl;
 #if OMPI_RTE_ORTE
     char *mpirun_prefix_by_default;
 #endif
@@ -196,6 +196,7 @@ void ompi_info_do_config(bool want_all)
 
     /* Build a string describing what level of compliance the mpi_f08
        module has */
+    char f08_msg[1024];
     if (OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS) {
 
         /* Do we have everything? (not including PROTECTED, which
@@ -208,38 +209,41 @@ void ompi_info_do_config(bool want_all)
             OMPI_FORTRAN_HAVE_PROCEDURE &&
             OMPI_FORTRAN_HAVE_C_FUNLOC &&
             OMPI_FORTRAN_NEED_WRAPPER_ROUTINES) {
-            fortran_usempif08_compliance = strdup("The mpi_f08 module is available, and is fully compliant.  w00t!");
+            fortran_usempif08_compliance = "The mpi_f08 module is available, and is fully compliant.  w00t!";
         } else {
-            char f08[1024];
             int first = 1;
-            snprintf(f08, sizeof(f08),
+            snprintf(f08_msg, sizeof(f08_msg),
                      "The mpi_f08 module is available, but due to limitations in the %s compiler, does not support the following: ", 
                      OMPI_FC);
             if (!OMPI_BUILD_FORTRAN_F08_SUBARRAYS) {
-                append(f08, sizeof(f08), &first, "array subsections");
+                append(f08_msg, sizeof(f08_msg), &first, "array subsections");
             }
             if (!OMPI_FORTRAN_HAVE_PRIVATE) {
-                append(f08, sizeof(f08), &first, "private MPI_Status members");
+                append(f08_msg, sizeof(f08_msg), &first,
+                       "private MPI_Status members");
             }
             if (!OMPI_FORTRAN_HAVE_ABSTRACT) {
-                append(f08, sizeof(f08), &first, "ABSTRACT INTERFACE function pointers");
+                append(f08_msg, sizeof(f08_msg), &first,
+                       "ABSTRACT INTERFACE function pointers");
             }
             if (!OMPI_FORTRAN_HAVE_ASYNCHRONOUS) {
-                append(f08, sizeof(f08), &first, "Fortran '08-specified ASYNCHRONOUS behavior");
+                append(f08_msg, sizeof(f08_msg), &first,
+                       "Fortran '08-specified ASYNCHRONOUS behavior");
             }
             if (!OMPI_FORTRAN_HAVE_PROCEDURE) {
-                append(f08, sizeof(f08), &first, "PROCEDUREs");
+                append(f08_msg, sizeof(f08_msg), &first, "PROCEDUREs");
             }
             if (!OMPI_FORTRAN_HAVE_C_FUNLOC) {
-                append(f08, sizeof(f08), &first, "C_FUNLOCs");
+                append(f08_msg, sizeof(f08_msg), &first, "C_FUNLOCs");
             }
             if (OMPI_FORTRAN_NEED_WRAPPER_ROUTINES) {
-                append(f08, sizeof(f08), &first, "direct passthru (where possible) to underlying Open MPI's C functionality");
+                append(f08_msg, sizeof(f08_msg), &first,
+                       "direct passthru (where possible) to underlying Open MPI's C functionality");
             }
-            fortran_usempif08_compliance = strdup(f08);
+            fortran_usempif08_compliance = f08_msg;
         }
     } else {
-        fortran_usempif08_compliance = strdup("The mpi_f08 module was not built");
+        fortran_usempif08_compliance = "The mpi_f08 module was not built";
     }
 
     java = OMPI_WANT_JAVA_BINDINGS ? "yes" : "no";
@@ -254,7 +258,7 @@ void ompi_info_do_config(bool want_all)
     fortran_mpifh_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_MPIFH_BINDINGS) ? "yes" : "no";
     fortran_usempi_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_USEMPI_BINDINGS) ? "yes" : "no";
     fortran_usempif08_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS) ? "yes" : "no";
-    want_libltdl = OPAL_WANT_LIBLTDL ? "yes" : "no";
+    have_dl = OPAL_HAVE_DL_SUPPORT ? "yes" : "no";
 #if OMPI_RTE_ORTE
     mpirun_prefix_by_default = ORTE_WANT_ORTERUN_PREFIX_BY_DEFAULT ? "yes" : "no";
 #endif
@@ -327,9 +331,6 @@ void ompi_info_do_config(bool want_all)
                   fortran_usempif08);
     opal_info_out("Fort mpi_f08 compliance", "bindings:use_mpi_f08:compliance", 
                   fortran_usempif08_compliance);
-    if (NULL != fortran_usempif08_compliance) {
-        free(fortran_usempif08_compliance);
-    }
     opal_info_out("Fort mpi_f08 subarrays", "bindings:use_mpi_f08:subarrays-supported", 
                   fortran_build_f08_subarrays);
     opal_info_out("Java bindings", "bindings:java", java);
@@ -617,7 +618,7 @@ void ompi_info_do_config(bool want_all)
     opal_info_out("MPI parameter check", "option:mpi-param-check", paramcheck);
     opal_info_out("Memory profiling support", "option:mem-profile", memprofile);
     opal_info_out("Memory debugging support", "option:mem-debug", memdebug);
-    opal_info_out("libltdl support", "option:dlopen", want_libltdl);
+    opal_info_out("dl support", "option:dlopen", have_dl);
     opal_info_out("Heterogeneous support", "options:heterogeneous", heterogeneous);
 #if OMPI_RTE_ORTE
     opal_info_out("mpirun default --prefix", "mpirun:prefix_by_default", 

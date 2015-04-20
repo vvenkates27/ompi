@@ -1,9 +1,12 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2014      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,6 +22,7 @@
 
 #include "opal/constants.h"
 #include "opal/util/sys_limits.h"
+#include "opal/mca/common/verbs/common_verbs.h"
 
 #include "oshmem/mca/sshmem/sshmem.h"
 #include "oshmem/mca/sshmem/base/base.h"
@@ -58,30 +62,25 @@ mca_sshmem_verbs_component_t mca_sshmem_verbs_component = {
         /**
          * common MCA component data
          */
-        {
+        .base_version = {
             MCA_SSHMEM_BASE_VERSION_2_0_0,
 
             /* component name and version */
-            "verbs",
-            OSHMEM_MAJOR_VERSION,
-            OSHMEM_MINOR_VERSION,
-            OSHMEM_RELEASE_VERSION,
+            .mca_component_name = "verbs",
+            MCA_BASE_MAKE_VERSION(component, OSHMEM_MAJOR_VERSION, OSHMEM_MINOR_VERSION,
+                                  OSHMEM_RELEASE_VERSION),
 
-            /* component open */
-            verbs_open,
-            /* component close */
-            verbs_close,
-            /* component query */
-            verbs_query,
-            /* component register */
-            verbs_register
+            .mca_open_component = verbs_open,
+            .mca_close_component = verbs_close,
+            .mca_query_component = verbs_query,
+            .mca_register_component_params = verbs_register,
         },
         /* MCA v2.0.0 component meta data */
-        {
+        .base_data = {
             /* the component is checkpoint ready */
             MCA_BASE_METADATA_PARAM_CHECKPOINT
         },
-        verbs_runtime_query,
+        .runtime_query = verbs_runtime_query,
     },
 };
 
@@ -99,6 +98,11 @@ verbs_runtime_query(mca_base_module_t **module,
 
     *priority = 0;
     *module = NULL;
+
+    /* If fork support is requested, try to enable it */
+    if (OSHMEM_SUCCESS != (rc = opal_common_verbs_fork_test())) {
+        return OSHMEM_ERROR;
+    }
 
     memset(device, 0, sizeof(*device));
 

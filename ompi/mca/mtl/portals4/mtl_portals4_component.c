@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -48,24 +49,23 @@ mca_mtl_base_component_2_0_0_t mca_mtl_portals4_component = {
     /* First, the mca_base_component_t struct containing meta
      * information about the component itself */
 
-    {
+    .mtl_version = {
         MCA_MTL_BASE_VERSION_2_0_0,
 
-        "portals4", /* MCA component name */
-        OMPI_MAJOR_VERSION,  /* MCA component major version */
-        OMPI_MINOR_VERSION,  /* MCA component minor version */
-        OMPI_RELEASE_VERSION,  /* MCA component release version */
-        ompi_mtl_portals4_component_open,  /* component open */
-        ompi_mtl_portals4_component_close,  /* component close */
-        ompi_mtl_portals4_component_query,  /* component close */
-        ompi_mtl_portals4_component_register
+        .mca_component_name = "portals4",
+        MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION,
+                              OMPI_RELEASE_VERSION),
+        .mca_open_component = ompi_mtl_portals4_component_open,
+        .mca_close_component = ompi_mtl_portals4_component_close,
+        .mca_query_component = ompi_mtl_portals4_component_query,
+        .mca_register_component_params = ompi_mtl_portals4_component_register,
     },
-    {
+    .mtl_data = {
         /* The component is not checkpoint ready */
         MCA_BASE_METADATA_PARAM_NONE
     },
 
-    ompi_mtl_portals4_component_init,  /* component init */
+    .mtl_init = ompi_mtl_portals4_component_init,
 };
 
 static mca_base_var_enum_value_t long_protocol_values[] = {
@@ -203,8 +203,9 @@ ompi_mtl_portals4_component_open(void)
     opal_free_list_init(&ompi_mtl_portals4.fl_message,
                         sizeof(ompi_mtl_portals4_message_t) + 
                         ompi_mtl_portals4.eager_limit,
+                        opal_cache_line_size,
                         OBJ_CLASS(ompi_mtl_portals4_message_t),
-                        1, -1, 1);
+                        0, 0, 1, -1, 1, NULL, 0, NULL, NULL, NULL);
 
     ompi_mtl_portals4.ni_h = PTL_INVALID_HANDLE;
     ompi_mtl_portals4.send_eq_h = PTL_INVALID_HANDLE;

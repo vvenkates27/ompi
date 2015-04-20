@@ -1,6 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2009-2012 Oak Ridge National Laboratory.  All rights reserved.
  * Copyright (c) 2009-2012 Mellanox Technologies.  All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,31 +58,28 @@ mca_bcol_ptpcoll_component_t mca_bcol_ptpcoll_component = {
         /* First, the mca_component_t struct containing meta
            information about the component itself */
         
-        {
+        .bcol_version = {
             MCA_BCOL_BASE_VERSION_2_0_0,
 
             /* Component name and version */
 
-            "ptpcoll",
-            OMPI_MAJOR_VERSION,
-            OMPI_MINOR_VERSION,
-            OMPI_RELEASE_VERSION,
+            .mca_component_name = "ptpcoll",
+            MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION,
+                                  OMPI_RELEASE_VERSION),
 
             /* Component open and close functions */
 
-            ptpcoll_open,
-            ptpcoll_close,
-	    .mca_register_component_params = mca_bcol_ptpcoll_register_mca_params
+            .mca_open_component = ptpcoll_open,
+            .mca_close_component = ptpcoll_close,
+	    .mca_register_component_params = mca_bcol_ptpcoll_register_mca_params,
         },
 
         /* Initialization / querying functions */
         
-        mca_bcol_ptpcoll_init_query,
-        mca_bcol_ptpcoll_comm_query,
-        NULL,
-        NULL,
-        false,
-        false,
+        .collm_init_query = mca_bcol_ptpcoll_init_query,
+        .collm_comm_query = mca_bcol_ptpcoll_comm_query,
+        .init_done = false,
+        .need_ordering = false,
     },
 
     /* component specific */
@@ -101,7 +101,7 @@ collreq_destruct(mca_bcol_ptpcoll_collreq_t *collreq)
 }
 
 OBJ_CLASS_INSTANCE(mca_bcol_ptpcoll_collreq_t,
-        ompi_free_list_item_t,
+        opal_free_list_item_t,
         collreq_construct,
         collreq_destruct);
 

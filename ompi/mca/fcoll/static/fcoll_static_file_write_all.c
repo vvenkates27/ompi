@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2014 University of Houston. All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights reserved.
+ *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -299,7 +301,8 @@ mca_fcoll_static_file_write_all (mca_io_ompio_file_t *fh,
 						  sizeof(local_io_array));
     if (NULL == global_iov_array){
       opal_output (1, "OUT OF MEMORY\n");
-      return OMPI_ERR_OUT_OF_RESOURCE;
+      ret = OMPI_ERR_OUT_OF_RESOURCE;
+      goto exit;
     }
   }
   
@@ -328,7 +331,8 @@ mca_fcoll_static_file_write_all (mca_io_ompio_file_t *fh,
     sorted = (int *)malloc (global_iov_count * sizeof(int));
     if (NULL == sorted) {
       opal_output (1, "OUT OF MEMORY\n");
-      return OMPI_ERR_OUT_OF_RESOURCE;
+      ret = OMPI_ERR_OUT_OF_RESOURCE;
+      goto exit;
     }
     local_heap_sort (global_iov_array, global_iov_count, sorted);
   }
@@ -625,7 +629,8 @@ mca_fcoll_static_file_write_all (mca_io_ompio_file_t *fh,
       temp_disp_index = (int *)calloc (1, fh->f_procs_per_group * sizeof (int));
       if (NULL == temp_disp_index) {
 	  opal_output (1, "OUT OF MEMORY\n");
-	  return OMPI_ERR_OUT_OF_RESOURCE;
+          ret = OMPI_ERR_OUT_OF_RESOURCE;
+          goto exit;
       }
       global_count = 0;
       for (i=0;i<entries_per_aggregator;i++){
@@ -720,7 +725,8 @@ mca_fcoll_static_file_write_all (mca_io_ompio_file_t *fh,
 	send_buf = malloc (bytes_to_write_in_cycle);
 	if (NULL == send_buf) {
 	    opal_output (1, "OUT OF MEMORY\n");
-	    return OMPI_ERR_OUT_OF_RESOURCE;
+	    ret = OMPI_ERR_OUT_OF_RESOURCE;
+            goto exit;
 	}
 	remaining = bytes_to_write_in_cycle;
 	
@@ -806,7 +812,8 @@ mca_fcoll_static_file_write_all (mca_io_ompio_file_t *fh,
 	    (entries_per_aggregator * sizeof (mca_io_ompio_io_array_t));
 	if (NULL == fh->f_io_array) {
 	    opal_output(1, "OUT OF MEMORY\n");
-	    return OMPI_ERR_OUT_OF_RESOURCE;
+            ret = OMPI_ERR_OUT_OF_RESOURCE;
+            goto exit;
 	}
 	fh->f_num_of_io_entries = 0;
 	/*First entry for every aggregator*/
@@ -917,11 +924,6 @@ mca_fcoll_static_file_write_all (mca_io_ompio_file_t *fh,
   
   if (fh->f_procs_in_group[fh->f_aggregator_index] == fh->f_rank) {
       
-    if (NULL != disp_index){
-	free(disp_index);
-	disp_index = NULL;
-    }
-    
     if (NULL != local_iov_array){
 	free(local_iov_array);
 	local_iov_array = NULL;
@@ -936,23 +938,68 @@ mca_fcoll_static_file_write_all (mca_io_ompio_file_t *fh,
 	  displs_per_process[l] = NULL;
       }
     }
-    if (NULL != blocklen_per_process){
-	free(blocklen_per_process);
-	blocklen_per_process = NULL;
-    }
-    if (NULL != displs_per_process){
-      free(displs_per_process);
-      displs_per_process = NULL;
-    }
-    if(NULL != bytes_remaining){
-	free(bytes_remaining);
-	bytes_remaining = NULL;
-    }
-    if(NULL != current_index){
-      free(current_index);
-      current_index = NULL;
-    }
   }
+
+  if (NULL != send_buf){
+    free(send_buf);
+    send_buf = NULL;
+  }
+
+  if (NULL != global_buf){
+    free(global_buf);
+    global_buf = NULL;
+  }
+
+  if (NULL != recvtype){
+    free(recvtype);
+    recvtype = NULL;
+  }
+
+  if (NULL != sorted_file_offsets){
+    free(sorted_file_offsets);
+    sorted_file_offsets = NULL;
+  }
+
+  if (NULL != file_offsets_for_agg){
+    free(file_offsets_for_agg);
+    file_offsets_for_agg = NULL;
+  }
+
+  if (NULL != memory_displacements){
+    free(memory_displacements);
+    memory_displacements = NULL;
+  }
+
+  if (NULL != displs_per_process){
+    free(displs_per_process);
+    displs_per_process = NULL;
+  }
+
+  if (NULL != blocklen_per_process){
+    free(blocklen_per_process);
+    blocklen_per_process = NULL;
+  }
+
+  if(NULL != current_index){
+    free(current_index);
+    current_index = NULL;
+  }
+
+  if(NULL != bytes_remaining){
+    free(bytes_remaining);
+    bytes_remaining = NULL;
+  }
+
+  if (NULL != disp_index){
+    free(disp_index);
+    disp_index = NULL;
+  }
+
+  if (NULL != sorted) {
+    free(sorted);
+    sorted = NULL;
+  }
+
   return ret;
 } 
 

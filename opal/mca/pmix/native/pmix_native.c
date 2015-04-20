@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2014      Intel, Inc.  All rights reserved.
- * Copyright (c) 2014      Research Organization for Information Science
+ * Copyright (c) 2014-2015 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -28,6 +28,7 @@
 #include "opal/mca/hwloc/base/base.h"
 #include "opal/runtime/opal.h"
 #include "opal/runtime/opal_progress_threads.h"
+#include "opal/util/argv.h"
 #include "opal/util/error.h"
 #include "opal/util/output.h"
 #include "opal/util/proc.h"
@@ -100,7 +101,6 @@ const opal_pmix_base_module_t opal_pmix_native_module = {
 // local variables
 static int init_cntr = 0;
 opal_process_name_t native_pname;
-static char *local_uri = NULL;
 static uint32_t sm_flag;
 
 static void unpack_segment_info(opal_buffer_t *buf, opal_process_name_t *id, char** seg_info)
@@ -200,6 +200,9 @@ static int native_init(void)
             /* let the caller know that the server isn't available yet */
             return OPAL_ERR_SERVER_NOT_AVAIL;
         } else {
+            /* not ready yet, so decrement our init_cntr so we can come thru
+             * here again */
+            --init_cntr;
             return OPAL_ERROR;
         }
     }
@@ -215,10 +218,12 @@ static int native_init(void)
         mca_pmix_native_component.address.sun_family = AF_UNIX;
         uri = opal_argv_split(mca_pmix_native_component.uri, ':');
         if (2 != opal_argv_count(uri)) {
+            opal_argv_free(uri);
             return OPAL_ERROR;
         }
         /* if the rendezvous file doesn't exist, that's an error */
         if (0 != access(uri[1], R_OK)) {
+            opal_argv_free(uri);
             return OPAL_ERR_NOT_FOUND;
         }
         opal_convert_string_to_process_name(&mca_pmix_native_component.server, uri[0]);
@@ -434,12 +439,6 @@ static int native_put(opal_pmix_scope_t scope,
         }
     }
 
-    /* if this is our uri, save it as we need to send it to our server
-     * as a special, separate item */
-    if (0 == strcmp(OPAL_DSTORE_URI, kv->key)) {
-        local_uri = strdup(kv->data.string);
-    }
-
     /* have to save a copy locally as some of our components will
      * look for it */
     (void)opal_dstore.store(opal_dstore_internal, &OPAL_PROC_MY_NAME, kv);
@@ -489,17 +488,6 @@ static int native_fence(opal_process_name_t *procs, size_t nprocs)
             OBJ_RELEASE(msg);
             return rc;
         }
-    }
-    /* provide our URI */
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(msg, &local_uri, 1, OPAL_STRING))) {
-        OPAL_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    /* only do it once */
-    if (NULL != local_uri) {
-        free(local_uri);
-        local_uri = NULL;
     }
 
     /* pack 1 if we have sm dstore enabled, 0 otherwise */
@@ -753,17 +741,6 @@ static int native_fence_nb(opal_process_name_t *procs, size_t nprocs,
             OBJ_RELEASE(msg);
             return rc;
         }
-    }
-    /* provide our URI */
-    if (OPAL_SUCCESS != (rc = opal_dss.pack(msg, &local_uri, 1, OPAL_STRING))) {
-        OPAL_ERROR_LOG(rc);
-        OBJ_RELEASE(msg);
-        return rc;
-    }
-    /* only do it once */
-    if (NULL != local_uri) {
-        free(local_uri);
-        local_uri = NULL;
     }
 
     /* pack 1 if we have sm dstore enabled, 0 otherwise */

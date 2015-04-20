@@ -16,7 +16,7 @@
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
- * Copyright (c) 2014      Research Organization for Information Science
+ * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
@@ -1176,9 +1176,9 @@ static int open_port(char *port_name, orte_rml_tag_t given_tag)
      */
     if ((orte_process_info.proc_type & ORTE_PROC_SINGLETON) &&
         !orte_routing_is_enabled) {
-        if (ORTE_SUCCESS != orte_plm_base_fork_hnp()) {
-            ORTE_ERROR_LOG(ORTE_ERR_FATAL);
-            return ORTE_ERR_FATAL;
+        if (ORTE_SUCCESS != (rc = orte_plm_base_fork_hnp())) {
+            ORTE_ERROR_LOG(rc);
+            return OMPI_ERROR;
         }
         orte_routing_is_enabled = true;
         /* need to init_routes again to redirect messages
@@ -1268,6 +1268,9 @@ static int parse_port_name(const char *port_name,
     
     /* don't mangle the port name */
     tmpstring = strdup(port_name);
+    if (NULL == tmpstring) {
+        return OMPI_ERR_OUT_OF_RESOURCE;
+    }
     
     /* find the ':' demarking the RML tag we added to the end */
     if (NULL == (ptr = strrchr(tmpstring, ':'))) {
@@ -1300,9 +1303,7 @@ static int parse_port_name(const char *port_name,
     
 cleanup:
     /* release the tmp storage */
-    if (NULL != tmpstring) {
-        free(tmpstring);
-    }
+    free(tmpstring);
     return rc;
 }
 
@@ -1332,6 +1333,7 @@ static int dyn_init(void)
                          port_name));
     
     rc = connect_accept (MPI_COMM_WORLD, root, port_name, send_first, &newcomm);
+    free(port_name);
     if (OMPI_SUCCESS != rc) {
         return rc;
     }
@@ -1392,7 +1394,7 @@ static void process_request(orte_process_name_t* sender,
     ompi_group_t *group=MPI_COMM_SELF->c_local_group;
     ompi_group_t *new_group_pointer;
     ompi_proc_t **rprocs=NULL;
-    ompi_proc_t **new_proc_list;
+    ompi_proc_t **new_proc_list=NULL;
     int new_proc_len;
     opal_buffer_t *xfer;
     int cnt, rc;
@@ -1518,7 +1520,10 @@ static void process_request(orte_process_name_t* sender,
     if (NULL != rprocs) {
         free(rprocs);
     }
-    if (OMPI_SUCCESS != rc && MPI_COMM_NULL == newcomp) {
+    if (NULL != new_proc_list) {
+        free(new_proc_list);
+    }
+    if (OMPI_SUCCESS != rc && MPI_COMM_NULL != newcomp) {
         OBJ_RELEASE(newcomp);
     }
 }

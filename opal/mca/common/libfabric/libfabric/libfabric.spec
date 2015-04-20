@@ -1,12 +1,17 @@
 Name: libfabric
-Version: 1.0.0-rc1
-Release: 1.rc1%{?dist}
+Version: 1.0.0rc5
+Release: 1%{?dist}
 Summary: User-space RDMA Fabric Interfaces
 Group: System Environment/Libraries
 License: GPLv2 or BSD
 Url: http://www.github.com/ofiwg/libfabric
 Source: http://www.openfabrics.org/downloads/fabrics/%{name}-%{version}.tar.bz2
 Prefix: ${_prefix}
+
+BuildRequires: libnl-devel
+BuildRequires: librdmacm-devel
+BuildRequires: libibverbs-devel
+BuildRequires: infinipath-psm-devel
 
 %description
 libfabric provides a user-space API to access high-performance fabric
@@ -25,7 +30,8 @@ Development files for the libfabric library.
 
 %build
 # defaults: with-dlopen and without-valgrind can be over-rode:
-%configure %{?_without_dlopen} %{?_with_valgrind}
+%configure %{?_without_dlopen} %{?_with_valgrind} \
+	--enable-sockets --enable-verbs --enable-usnic --enable-psm
 make %{?_smp_mflags}
 
 %install
@@ -55,5 +61,5 @@ rm -rf %{buildroot}
 %{_mandir}/man7/*
 
 %changelog
-* Mon Jan 19 2015 Maintainer Name <email@intel.com> 1.0.0
-- TODO: Release manager fill this out for initial release
+* Tue Apr 1 2015 Open Fabrics Interfaces Working Group <ofiwg@lists.openfabrics.org> 1.0.0
+- Release 1.0.0rc5

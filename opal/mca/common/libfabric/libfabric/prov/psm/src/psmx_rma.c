@@ -32,6 +32,15 @@
 
 #include "psmx.h"
 
+static inline void psmx_am_enqueue_rma(struct psmx_fid_domain *domain,
+				       struct psmx_am_request *req)
+{
+	pthread_mutex_lock(&domain->rma_queue.lock);
+	req->state = PSMX_AM_STATE_QUEUED;
+	slist_insert_tail(&req->list_entry, &domain->rma_queue.list);
+	pthread_mutex_unlock(&domain->rma_queue.lock);
+}
+
 /* RMA protocol:
  *
  * Write REQ:
@@ -75,7 +84,6 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 	int cmd, eom, has_data;
 	struct psmx_am_request *req;
 	struct psmx_cq_event *event;
-	int chunk_size;
 	uint64_t offset;
 	struct psmx_fid_mr *mr;
 
@@ -91,33 +99,35 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 		mr = psmx_mr_hash_get(key);
 		op_error = mr ?
 			psmx_mr_validate(mr, (uint64_t)rma_addr, len, FI_REMOTE_WRITE) :
-			-EINVAL;
+			-FI_EINVAL;
 		if (!op_error) {
 			rma_addr += mr->offset;
 			memcpy(rma_addr, src, len);
 			if (eom) {
-				if (mr->cq) {
+				if (mr->domain->rma_ep->recv_cq && has_data) {
 					/* TODO: report the addr/len of the whole write */
 					event = psmx_cq_create_event(
-							mr->cq,
+							mr->domain->rma_ep->recv_cq,
 							0, /* context */
 							rma_addr,
-							0, /* flags */
+							FI_REMOTE_WRITE | FI_RMA | FI_REMOTE_CQ_DATA,
 							rma_len,
-							has_data ? args[4].u64 : 0,
+							args[4].u64,
 							0, /* tag */
 							0, /* olen */
 							0);
 
 					if (event)
-						psmx_cq_enqueue_event(mr->cq, event);
+						psmx_cq_enqueue_event(mr->domain->rma_ep->recv_cq, event);
 					else
-						err = -ENOMEM;
+						err = -FI_ENOMEM;
 				}
-				if (mr->cntr)
-					psmx_cntr_inc(mr->cntr);
+
 				if (mr->domain->rma_ep->remote_write_cntr)
 					psmx_cntr_inc(mr->domain->rma_ep->remote_write_cntr);
+
+				if (mr->cntr && mr->cntr != mr->domain->rma_ep->remote_write_cntr)
+					psmx_cntr_inc(mr->cntr);
 			}
 		}
 		if (eom || op_error) {
@@ -137,7 +147,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 		mr = psmx_mr_hash_get(key);
 		op_error = mr ?
 			psmx_mr_validate(mr, (uint64_t)rma_addr, len, FI_REMOTE_WRITE) :
-			-EINVAL;
+			-FI_EINVAL;
 		if (op_error) {
 			rep_args[0].u32w0 = PSMX_AM_REP_WRITE | eom;
 			rep_args[0].u32w1 = op_error;
@@ -152,7 +162,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 
 		req = calloc(1, sizeof(*req));
 		if (!req) {
-			err = -ENOMEM;
+			err = -FI_ENOMEM;
 		}
 		else {
 			req->op = args[0].u32w0;
@@ -160,7 +170,10 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 			req->write.len = rma_len;
 			req->write.key = key;
 			req->write.context = (void *)args[4].u64;
+			req->write.peer_context = (void *)args[1].u64;
+			req->write.peer_addr = (void *)epaddr;
 			req->write.data = has_data ? args[5].u64 : 0;
+			req->cq_flags = FI_REMOTE_WRITE | FI_RMA | (has_data ? FI_REMOTE_CQ_DATA : 0),
 			PSMX_CTXT_TYPE(&req->fi_context) = PSMX_REMOTE_WRITE_CONTEXT;
 			PSMX_CTXT_USER(&req->fi_context) = mr;
 			psmx_am_enqueue_rma(mr->domain, req);
@@ -175,7 +188,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 		mr = psmx_mr_hash_get(key);
 		op_error = mr ?
 			psmx_mr_validate(mr, (uint64_t)rma_addr, rma_len, FI_REMOTE_READ) :
-			-EINVAL;
+			-FI_EINVAL;
 		if (!op_error) {
 			rma_addr += mr->offset;
 		}
@@ -184,8 +197,6 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 			rma_len = 0;
 		}
 
-		chunk_size = MIN(PSMX_AM_CHUNK_SIZE, psmx_am_param.max_reply_short);
-		assert(rma_len <= chunk_size);
 		rep_args[0].u32w0 = PSMX_AM_REP_READ | eom;
 		rep_args[0].u32w1 = op_error;
 		rep_args[1].u64 = args[1].u64;
@@ -207,7 +218,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 		mr = psmx_mr_hash_get(key);
 		op_error = mr ?
 			psmx_mr_validate(mr, (uint64_t)rma_addr, len, FI_REMOTE_WRITE) :
-			-EINVAL;
+			-FI_EINVAL;
 		if (op_error) {
 			rep_args[0].u32w0 = PSMX_AM_REP_READ | eom;
 			rep_args[0].u32w1 = op_error;
@@ -223,7 +234,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 
 		req = calloc(1, sizeof(*req));
 		if (!req) {
-			err = -ENOMEM;
+			err = -FI_ENOMEM;
 		}
 		else {
 			req->op = args[0].u32w0;
@@ -250,7 +261,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 						req->ep->send_cq,
 						req->write.context,
 						req->write.buf,
-						0, /* flags */
+						req->cq_flags,
 						req->write.len,
 						0, /* data */
 						0, /* tag */
@@ -259,7 +270,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 				if (event)
 					psmx_cq_enqueue_event(req->ep->send_cq, event);
 				else
-					err = -ENOMEM;
+					err = -FI_ENOMEM;
 			}
 
 			if (req->ep->write_cntr)
@@ -286,7 +297,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 						req->ep->send_cq,
 						req->read.context,
 						req->read.buf,
-						0, /* flags */
+						req->cq_flags,
 						req->read.len_read,
 						0, /* data */
 						0, /* tag */
@@ -295,7 +306,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 				if (event)
 					psmx_cq_enqueue_event(req->ep->send_cq, event);
 				else
-					err = -ENOMEM;
+					err = -FI_ENOMEM;
 			}
 
 			if (req->ep->read_cntr)
@@ -306,7 +317,7 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 		break;
 
 	default:
-		err = -EINVAL;
+		err = -FI_EINVAL;
 	}
 	return err;
 }
@@ -320,25 +331,30 @@ static ssize_t psmx_rma_self(int am_cmd,
 	struct psmx_fid_mr *mr;
 	struct psmx_cq_event *event;
 	struct psmx_fid_cntr *cntr;
+	struct psmx_fid_cntr *mr_cntr = NULL;
+	struct psmx_fid_cq *cq = NULL;
 	int no_event;
 	int err = 0;
 	int op_error = 0;
 	int access;
 	void *dst, *src;
+	uint64_t cq_flags;
 
 	switch (am_cmd) {
 	case PSMX_AM_REQ_WRITE:
 		access = FI_REMOTE_WRITE;
+		cq_flags = FI_WRITE | FI_RMA;
 		break;
 	case PSMX_AM_REQ_READ:
 		access = FI_REMOTE_READ;
+		cq_flags = FI_READ | FI_RMA;
 		break;
 	default:
-		return -EINVAL;
+		return -FI_EINVAL;
 	}
 
 	mr = psmx_mr_hash_get(key);
-	op_error = mr ? psmx_mr_validate(mr, addr, len, access) : -EINVAL;
+	op_error = mr ? psmx_mr_validate(mr, addr, len, access) : -FI_EINVAL;
 
 	if (!op_error) {
 		addr += mr->offset;
@@ -346,6 +362,10 @@ static ssize_t psmx_rma_self(int am_cmd,
 			dst = (void *)addr;
 			src = buf;
 			cntr = mr->domain->rma_ep->remote_write_cntr;
+			if (flags & FI_REMOTE_CQ_DATA)
+				cq = mr->domain->rma_ep->recv_cq;
+			if (mr->cntr != cntr)
+				mr_cntr = mr->cntr;
 		}
 		else {
 			dst = buf;
@@ -355,38 +375,40 @@ static ssize_t psmx_rma_self(int am_cmd,
 
 		memcpy(dst, src, len);
 
-		if (mr->cq && am_cmd == PSMX_AM_REQ_WRITE) {
+		if (cq) {
 			event = psmx_cq_create_event(
-					mr->cq,
+					cq,
 					0, /* context */
 					(void *)addr,
-					0, /* flags */
+					FI_REMOTE_WRITE | FI_RMA | FI_REMOTE_CQ_DATA,
 					len,
-					flags & FI_REMOTE_CQ_DATA ? data : 0,
+					data,
 					0, /* tag */
 					0, /* olen */
 					0 /* err */);
 
 			if (event)
-				psmx_cq_enqueue_event(mr->cq, event);
+				psmx_cq_enqueue_event(cq, event);
 			else
-				err = -ENOMEM;
+				err = -FI_ENOMEM;
 		}
-		if (mr->cntr && am_cmd == PSMX_AM_REQ_WRITE)
-			psmx_cntr_inc(mr->cntr);
+
 		if (cntr)
 			psmx_cntr_inc(cntr);
+
+		if (mr_cntr)
+			psmx_cntr_inc(mr_cntr);
 	}
 
-	no_event = (flags & FI_INJECT) ||
-		   (ep->send_cq_event_flag && !(flags & FI_EVENT));
+	no_event = (flags & PSMX_NO_COMPLETION) ||
+		   (ep->send_cq_event_flag && !(flags & FI_COMPLETION));
 
 	if (ep->send_cq && !no_event) {
 		event = psmx_cq_create_event(
 				ep->send_cq,
 				context,
 				(void *)buf,
-				0, /* flags */
+				cq_flags,
 				len,
 				0, /* data */
 				0, /* tag */
@@ -395,7 +417,7 @@ static ssize_t psmx_rma_self(int am_cmd,
 		if (event)
 			psmx_cq_enqueue_event(ep->send_cq, event);
 		else
-			err = -ENOMEM;
+			err = -FI_ENOMEM;
 	}
 
 	switch (am_cmd) {
@@ -411,6 +433,22 @@ static ssize_t psmx_rma_self(int am_cmd,
 	}
 
 	return err;
+}
+
+void psmx_am_ack_rma(struct psmx_am_request *req)
+{
+	psm_amarg_t args[8];
+
+	if ((req->op & PSMX_AM_OP_MASK) != PSMX_AM_REQ_WRITE_LONG)
+		return;
+
+	args[0].u32w0 = PSMX_AM_REP_WRITE | PSMX_AM_EOM;
+	args[0].u32w1 = req->error;
+	args[1].u64 = (uint64_t)(uintptr_t)req->write.peer_context;
+
+	psm_am_request_short(req->write.peer_addr,
+			     PSMX_AM_RMA_HANDLER, args, 2, NULL, 0,
+			     PSM_AM_FLAG_NOREPLY, NULL, NULL);
 }
 
 int psmx_am_process_rma(struct psmx_fid_domain *domain, struct psmx_am_request *req)
@@ -442,7 +480,6 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 	struct psmx_epaddr_context *epaddr_context;
 	struct psmx_am_request *req;
 	psm_amarg_t args[8];
-	int err;
 	int chunk_size;
 	size_t offset = 0;
 	uint64_t psm_tag;
@@ -457,7 +494,7 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 
 		trigger = calloc(1, sizeof(*trigger));
 		if (!trigger)
-			return -ENOMEM;
+			return -FI_ENOMEM;
 
 		trigger->op = PSMX_TRIGGERED_READ;
 		trigger->cntr = container_of(ctxt->trigger.threshold.cntr,
@@ -478,18 +515,18 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 	}
 
 	if (!buf)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	av = ep_priv->av;
 	if (av && av->type == FI_AV_TABLE) {
 		idx = src_addr;
 		if (idx >= av->last)
-			return -EINVAL;
+			return -FI_EINVAL;
 
 		src_addr = (fi_addr_t) av->psm_epaddrs[idx];
 	}
 	else if (!src_addr) {
-		return -EINVAL;
+		return -FI_EINVAL;
 	}
 
 	epaddr_context = psm_epaddr_getctxt((void *)src_addr);
@@ -500,7 +537,7 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 
 	req = calloc(1, sizeof(*req));
 	if (!req)
-		return -ENOMEM;
+		return -FI_ENOMEM;
 
 	req->op = PSMX_AM_REQ_READ;
 	req->read.buf = buf;
@@ -509,10 +546,12 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 	req->read.key = key; 	/* needed? */
 	req->read.context = context;
 	req->ep = ep_priv;
+	req->cq_flags = FI_READ | FI_RMA;
 	PSMX_CTXT_TYPE(&req->fi_context) = PSMX_READ_CONTEXT;
 	PSMX_CTXT_USER(&req->fi_context) = context;
+	PSMX_CTXT_EP(&req->fi_context) = ep_priv;
 
-	if (ep_priv->send_cq_event_flag && !(flags & FI_EVENT)) {
+	if (ep_priv->send_cq_event_flag && !(flags & FI_COMPLETION)) {
 		PSMX_CTXT_TYPE(&req->fi_context) = PSMX_NOCOMP_READ_CONTEXT;
 		req->no_event = 1;
 	}
@@ -521,7 +560,7 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 
 	if (psmx_env.tagged_rma && len > chunk_size) {
 		psm_tag = PSMX_RMA_BIT | ep_priv->domain->psm_epid;
-		err = psm_mq_irecv(ep_priv->domain->psm_mq, psm_tag, -1ULL,
+		psm_mq_irecv(ep_priv->domain->psm_mq, psm_tag, -1ULL,
 			0, buf, len, (void *)&req->fi_context, &psm_req);
 
 		args[0].u32w0 = PSMX_AM_REQ_READ_LONG;
@@ -530,7 +569,7 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 		args[2].u64 = addr;
 		args[3].u64 = key;
 		args[4].u64 = psm_tag;
-		err = psm_am_request_short((psm_epaddr_t) src_addr,
+		psm_am_request_short((psm_epaddr_t) src_addr,
 					PSMX_AM_RMA_HANDLER, args, 5, NULL, 0,
 					PSM_AM_FLAG_NOREPLY, NULL, NULL);
 
@@ -544,7 +583,7 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 		args[0].u32w1 = chunk_size;
 		args[2].u64 = addr;
 		args[4].u64 = offset;
-		err = psm_am_request_short((psm_epaddr_t) src_addr,
+		psm_am_request_short((psm_epaddr_t) src_addr,
 					PSMX_AM_RMA_HANDLER, args, 5, NULL, 0,
 					0, NULL, NULL);
 		addr += chunk_size;
@@ -556,7 +595,7 @@ ssize_t _psmx_read(struct fid_ep *ep, void *buf, size_t len,
 	args[0].u32w1 = len;
 	args[2].u64 = addr;
 	args[4].u64 = offset;
-	err = psm_am_request_short((psm_epaddr_t) src_addr,
+	psm_am_request_short((psm_epaddr_t) src_addr,
 				PSMX_AM_RMA_HANDLER, args, 5, NULL, 0,
 				0, NULL, NULL);
 
@@ -579,7 +618,7 @@ static ssize_t psmx_readmsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
 			uint64_t flags)
 {
 	if (!msg || msg->iov_count != 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	return _psmx_read(ep, msg->msg_iov[0].iov_base,
 			  msg->msg_iov[0].iov_len,
@@ -593,7 +632,7 @@ static ssize_t psmx_readv(struct fid_ep *ep, const struct iovec *iov,
 		      uint64_t addr, uint64_t key, void *context)
 {
 	if (!iov || count != 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	return psmx_read(ep, iov->iov_base, iov->iov_len,
 			 desc ? desc[0] : NULL, src_addr, addr, key, context);
@@ -611,11 +650,12 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 	psm_amarg_t args[8];
 	int nargs;
 	int am_flags = PSM_AM_FLAG_ASYNC;
-	int err;
 	int chunk_size;
 	psm_mq_req_t psm_req;
 	uint64_t psm_tag;
 	size_t idx;
+	void *psm_context;
+	int no_event;
 
 	ep_priv = container_of(ep, struct psmx_fid_ep, ep);
 
@@ -625,7 +665,7 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 
 		trigger = calloc(1, sizeof(*trigger));
 		if (!trigger)
-			return -ENOMEM;
+			return -FI_ENOMEM;
 
 		trigger->op = PSMX_TRIGGERED_WRITE;
 		trigger->cntr = container_of(ctxt->trigger.threshold.cntr,
@@ -647,18 +687,18 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 	}
 
 	if (!buf)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	av = ep_priv->av;
 	if (av && av->type == FI_AV_TABLE) {
 		idx = dest_addr;
 		if (idx >= av->last)
-			return -EINVAL;
+			return -FI_EINVAL;
 
 		dest_addr = (fi_addr_t) av->psm_epaddrs[idx];
 	}
 	else if (!dest_addr) {
-		return -EINVAL;
+		return -FI_EINVAL;
 	}
 
 	epaddr_context = psm_epaddr_getctxt((void *)dest_addr);
@@ -667,32 +707,32 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 				     ep_priv, (void *)buf, len, desc,
 				     addr, key, context, flags, data);
 
+	no_event = (flags & PSMX_NO_COMPLETION) ||
+		   (ep_priv->send_cq_event_flag && !(flags & FI_COMPLETION));
+
 	if (flags & FI_INJECT) {
+		if (len > PSMX_INJECT_SIZE)
+			return -FI_EMSGSIZE;
+
 		req = malloc(sizeof(*req) + len);
 		if (!req)
-			return -ENOMEM;
+			return -FI_ENOMEM;
 
 		memset((void *)req, 0, sizeof(*req));
 		memcpy((void *)req + sizeof(*req), (void *)buf, len);
 		buf = (void *)req + sizeof(*req);
-
-		PSMX_CTXT_TYPE(&req->fi_context) = PSMX_INJECT_WRITE_CONTEXT;
-		req->no_event = 1;
 	}
 	else {
 		req = calloc(1, sizeof(*req));
 		if (!req)
-			return -ENOMEM;
+			return -FI_ENOMEM;
 
-		if (ep_priv->send_cq_event_flag && !(flags & FI_EVENT)) {
-			PSMX_CTXT_TYPE(&req->fi_context) = PSMX_NOCOMP_WRITE_CONTEXT;
-			req->no_event = 1;
-		}
-		else {
-			PSMX_CTXT_TYPE(&req->fi_context) = PSMX_WRITE_CONTEXT;
-		}
+		PSMX_CTXT_TYPE(&req->fi_context) = no_event ?
+						   PSMX_NOCOMP_WRITE_CONTEXT :
+						   PSMX_WRITE_CONTEXT;
 	}
 
+	req->no_event = no_event;
 	req->op = PSMX_AM_REQ_WRITE;
 	req->write.buf = (void *)buf;
 	req->write.len = len;
@@ -700,7 +740,9 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 	req->write.key = key; 	/* needed? */
 	req->write.context = context;
 	req->ep = ep_priv;
+	req->cq_flags = FI_WRITE | FI_RMA;
 	PSMX_CTXT_USER(&req->fi_context) = context;
+	PSMX_CTXT_EP(&req->fi_context) = ep_priv;
 
 	chunk_size = MIN(PSMX_AM_CHUNK_SIZE, psmx_am_param.max_request_short);
 
@@ -718,13 +760,22 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 			args[0].u32w0 |= PSMX_AM_DATA;
 			nargs++;
 		}
-		err = psm_am_request_short((psm_epaddr_t) dest_addr,
+
+		if (flags & FI_COMMIT_COMPLETE) {
+			args[0].u32w0 |= PSMX_AM_FORCE_ACK;
+			psm_context = NULL;
+		}
+		else {
+			psm_context = (void *)&req->fi_context;
+		}
+
+		psm_am_request_short((psm_epaddr_t) dest_addr,
 					PSMX_AM_RMA_HANDLER, args, nargs,
 					NULL, 0, am_flags | PSM_AM_FLAG_NOREPLY,
 					NULL, NULL);
 
 		psm_mq_isend(ep_priv->domain->psm_mq, (psm_epaddr_t) dest_addr,
-				0, psm_tag, buf, len, (void *)&req->fi_context, &psm_req);
+				0, psm_tag, buf, len, psm_context, &psm_req);
 
 		return 0;
 	}
@@ -736,7 +787,7 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 		args[1].u64 = (uint64_t)(uintptr_t)req;
 		args[2].u64 = addr;
 		args[3].u64 = key;
-		err = psm_am_request_short((psm_epaddr_t) dest_addr,
+		psm_am_request_short((psm_epaddr_t) dest_addr,
 					PSMX_AM_RMA_HANDLER, args, nargs,
 					(void *)buf, chunk_size,
 					am_flags | PSM_AM_FLAG_NOREPLY, NULL, NULL);
@@ -755,7 +806,7 @@ ssize_t _psmx_write(struct fid_ep *ep, const void *buf, size_t len,
 		args[0].u32w0 |= PSMX_AM_DATA;
 		nargs++;
 	}
-	err = psm_am_request_short((psm_epaddr_t) dest_addr,
+	psm_am_request_short((psm_epaddr_t) dest_addr,
 				PSMX_AM_RMA_HANDLER, args, nargs,
 				(void *)buf, len, am_flags, NULL, NULL);
 
@@ -778,7 +829,7 @@ static ssize_t psmx_writemsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
 			 uint64_t flags)
 {
 	if (!msg || msg->iov_count != 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	return _psmx_write(ep, msg->msg_iov[0].iov_base,
 			   msg->msg_iov[0].iov_len,
@@ -792,7 +843,7 @@ static ssize_t psmx_writev(struct fid_ep *ep, const struct iovec *iov,
 		       uint64_t addr, uint64_t key, void *context)
 {
 	if (!iov || count != 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	return psmx_write(ep, iov->iov_base, iov->iov_len,
 			  desc ? desc[0] : NULL, dest_addr, addr, key, context);
@@ -806,7 +857,7 @@ static ssize_t psmx_inject(struct fid_ep *ep, const void *buf, size_t len,
 	ep_priv = container_of(ep, struct psmx_fid_ep, ep);
 
 	return _psmx_write(ep, buf, len, NULL, dest_addr, addr, key,
-			   NULL, ep_priv->flags | FI_INJECT, 0);
+			   NULL, ep_priv->flags | FI_INJECT | PSMX_NO_COMPLETION, 0);
 }
 
 static ssize_t psmx_writedata(struct fid_ep *ep, const void *buf, size_t len, void *desc,
@@ -822,6 +873,7 @@ static ssize_t psmx_writedata(struct fid_ep *ep, const void *buf, size_t len, vo
 }
 
 struct fi_ops_rma psmx_rma_ops = {
+	.size = sizeof(struct fi_ops_rma),
 	.read = psmx_read,
 	.readv = psmx_readv,
 	.readmsg = psmx_readmsg,

@@ -137,6 +137,7 @@ struct fi_eq_err_entry {
 	int			prov_errno;
 	/* err_data is available until the next time the CQ is read */
 	void			*err_data;
+	size_t			err_data_size;
 };
 
 struct fi_eq_cm_entry {
@@ -244,13 +245,11 @@ struct fi_ops_cq {
 			fi_addr_t *src_addr);
 	ssize_t	(*readerr)(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 			uint64_t flags);
-	ssize_t	(*write)(struct fid_cq *cq, const void *buf, size_t len);
-	ssize_t	(*writeerr)(struct fid_cq *cq, struct fi_cq_err_entry *buf,
-			size_t len, uint64_t flags);
 	ssize_t	(*sread)(struct fid_cq *cq, void *buf, size_t count,
 			const void *cond, int timeout);
 	ssize_t	(*sreadfrom)(struct fid_cq *cq, void *buf, size_t count,
 			fi_addr_t *src_addr, const void *cond, int timeout);
+	int	(*signal)(struct fid_cq *cq);
 	const char * (*strerror)(struct fid_cq *cq, int prov_errno,
 			const void *err_data, char *buf, size_t len);
 };
@@ -377,17 +376,6 @@ fi_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf, uint64_t flags)
 	return cq->ops->readerr(cq, buf, flags);
 }
 
-static inline ssize_t fi_cq_write(struct fid_cq *cq, const void *buf, size_t len)
-{
-	return cq->ops->write(cq, buf, len);
-}
-
-static inline ssize_t fi_cq_writeerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
-				     size_t len, uint64_t flags)
-{
-	return cq->ops->writeerr(cq, buf, len, flags);
-}
-
 static inline ssize_t
 fi_cq_sread(struct fid_cq *cq, void *buf, size_t count, const void *cond, int timeout)
 {
@@ -399,6 +387,11 @@ fi_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 		fi_addr_t *src_addr, const void *cond, int timeout)
 {
 	return cq->ops->sreadfrom(cq, buf, count, src_addr, cond, timeout);
+}
+
+static inline int fi_cq_signal(struct fid_cq *cq)
+{
+	return cq->ops->signal(cq);
 }
 
 static inline const char *

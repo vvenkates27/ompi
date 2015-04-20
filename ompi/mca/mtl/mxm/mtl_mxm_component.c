@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (C) Mellanox Technologies Ltd. 2001-2011.  ALL RIGHTS RESERVED.
  * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
@@ -45,22 +46,21 @@ mca_mtl_mxm_component_t mca_mtl_mxm_component = {
      * First, the mca_base_component_t struct containing meta
      * information about the component itself
      */
-    {
+    .mtl_version = {
         MCA_MTL_BASE_VERSION_2_0_0,
-        "mxm", /* MCA component name */
-        OMPI_MAJOR_VERSION, /* MCA component major version */
-        OMPI_MINOR_VERSION, /* MCA component minor version */
-        OMPI_RELEASE_VERSION, /* MCA component release version */
-        ompi_mtl_mxm_component_open, /* component open */
-        ompi_mtl_mxm_component_close, /* component close */
-        ompi_mtl_mxm_component_query, /* component query */
-        ompi_mtl_mxm_component_register
+        .mca_component_name = "mxm",
+        MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION,
+                              OMPI_RELEASE_VERSION),
+        .mca_open_component = ompi_mtl_mxm_component_open,
+        .mca_close_component = ompi_mtl_mxm_component_close,
+        .mca_query_component = ompi_mtl_mxm_component_query,
+        .mca_register_component_params = ompi_mtl_mxm_component_register,
     },
-    {
+    .mtl_data = {
         /* The component is not checkpoint ready */
         MCA_BASE_METADATA_PARAM_NONE
     },
-    ompi_mtl_mxm_component_init /* component init */
+    .mtl_init = ompi_mtl_mxm_component_init,
 }
 };
 
@@ -240,16 +240,16 @@ static int ompi_mtl_mxm_component_open(void)
         return OPAL_ERR_NOT_AVAILABLE;
     }
 
-    OBJ_CONSTRUCT(&mca_mtl_mxm_component.mxm_messages, ompi_free_list_t);
-    rc = ompi_free_list_init_new(&mca_mtl_mxm_component.mxm_messages,
-                                  sizeof(ompi_mtl_mxm_message_t),
-                                  opal_cache_line_size,
-                                  OBJ_CLASS(ompi_mtl_mxm_message_t),
-                                  0, opal_cache_line_size,
-                                  32 /* free list num */,
-                                  -1 /* free list max */,
-                                  32 /* free list inc */,
-                                  NULL);
+    OBJ_CONSTRUCT(&mca_mtl_mxm_component.mxm_messages, opal_free_list_t);
+    rc = opal_free_list_init (&mca_mtl_mxm_component.mxm_messages,
+                              sizeof(ompi_mtl_mxm_message_t),
+                              opal_cache_line_size,
+                              OBJ_CLASS(ompi_mtl_mxm_message_t),
+                              0, opal_cache_line_size,
+                              32 /* free list num */,
+                              -1 /* free list max */,
+                              32 /* free list inc */,
+                              NULL, 0, NULL, NULL, NULL);
     if (OMPI_SUCCESS != rc) {
         opal_show_help("help-mtl-mxm.txt", "mxm init", true,
                     mxm_error_string(err));

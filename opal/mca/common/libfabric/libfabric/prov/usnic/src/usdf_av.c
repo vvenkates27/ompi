@@ -81,14 +81,16 @@ usdf_av_insert_async_complete(struct usdf_av_insert *insert)
 
 	pthread_spin_lock(&av->av_lock);
 
+	usdf_timer_free(av->av_domain->dom_fabric, insert->avi_timer);
+
 	atomic_dec(&av->av_active_inserts);
 	if (atomic_get(&av->av_active_inserts) == 0 && av->av_closing) {
+		pthread_spin_destroy(&av->av_lock);
 		free(av);
 	} else {
 		pthread_spin_unlock(&av->av_lock);
 	}
 
-	usdf_timer_free(av->av_domain->dom_fabric, insert->avi_timer);
 	free(insert);
 }
 
@@ -111,6 +113,8 @@ usdf_post_insert_request_error(struct usdf_av_insert *insert,
 	err_entry.context = insert->avi_context;
 	err_entry.data = req - (struct usdf_av_req *)(insert + 1);
 	err_entry.err = -req->avr_status;
+	err_entry.err_data = NULL;
+	err_entry.err_data_size = 0;
 
 	usdf_eq_write_internal(av->av_eq, 0,
 		&err_entry, sizeof(err_entry),
@@ -160,7 +164,7 @@ usdf_av_insert_progress(void *v)
 		ret = usnic_arp_lookup(dap->uda_ifname,
 				req->avr_daddr_be, fp->fab_arp_sockfd, eth);
 
-		/* anything besides -EAGAIN means request is completed */
+		/* anything besides EAGAIN means request is completed */
 		if (ret != EAGAIN) {
 			TAILQ_REMOVE(&insert->avi_req_list, req, avr_link);
 			req->avr_status = -ret;
@@ -328,7 +332,7 @@ usdf_am_insert_sync(struct fid_av *fav, const void *addr, size_t count,
 	const struct sockaddr_in *sin;
 	struct usdf_av *av;
 	struct usd_dest *u_dest;
-	struct usdf_dest *dest = dest;	// supress uninit
+	struct usdf_dest *dest;
 	int ret_count;
 	int ret;
 	int i;
@@ -344,6 +348,8 @@ usdf_am_insert_sync(struct fid_av *fav, const void *addr, size_t count,
 
 	/* XXX parallelize, this will also eliminate u_dest silliness */
 	for (i = 0; i < count; i++) {
+		dest = NULL;
+		u_dest = NULL;
 		ret = usdf_av_alloc_dest(&dest);
 		if (ret == 0) {
 			ret = usd_create_dest(av->av_domain->dom_dev,
@@ -352,12 +358,13 @@ usdf_am_insert_sync(struct fid_av *fav, const void *addr, size_t count,
 		}
 		if (ret == 0) {
 			dest->ds_dest = *u_dest;
-			free(u_dest);
 			fi_addr[i] = (fi_addr_t)dest;
 			++ret_count;
 		} else {
 			fi_addr[i] = FI_ADDR_NOTAVAIL;
+			free(dest);
 		}
+		free(u_dest);
 		++sin;
 	}
 
@@ -389,7 +396,7 @@ usdf_am_lookup(struct fid_av *av, fi_addr_t fi_addr, void *addr,
 			  size_t *addrlen)
 {
 	struct usdf_dest *dest;
-	struct sockaddr_in sin;
+	struct sockaddr_in sin = { 0 };
 	size_t copylen;
 
 	dest = (struct usdf_dest *)(uintptr_t)fi_addr;
@@ -467,6 +474,7 @@ usdf_av_close(struct fid *fid)
 		av->av_closing = 1;
 		pthread_spin_unlock(&av->av_lock);
 	} else {
+		pthread_spin_destroy(&av->av_lock);
 		free(av);
 	}
 	return 0;
@@ -518,6 +526,8 @@ static struct fi_ops usdf_av_fi_ops = {
 static struct fi_ops_av usdf_am_ops_async = {
 	.size = sizeof(struct fi_ops_av),
 	.insert = usdf_am_insert_async,
+	.insertsvc = fi_no_av_insertsvc,
+	.insertsym = fi_no_av_insertsym,
 	.remove = usdf_am_remove,
 	.lookup = usdf_am_lookup,
 	.straddr = usdf_av_straddr
@@ -526,6 +536,8 @@ static struct fi_ops_av usdf_am_ops_async = {
 static struct fi_ops_av usdf_am_ops_sync = {
 	.size = sizeof(struct fi_ops_av),
 	.insert = usdf_am_insert_sync,
+	.insertsvc = fi_no_av_insertsvc,
+	.insertsym = fi_no_av_insertsym,
 	.remove = usdf_am_remove,
 	.lookup = usdf_am_lookup,
 	.straddr = usdf_av_straddr

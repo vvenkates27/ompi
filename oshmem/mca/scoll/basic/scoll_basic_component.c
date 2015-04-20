@@ -1,6 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2013      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -48,30 +51,28 @@ mca_scoll_base_component_t mca_scoll_basic_component = {
     /* First, the mca_component_t struct containing meta information
        about the component itself */
 
-    {
+    .scoll_version = {
         MCA_SCOLL_BASE_VERSION_2_0_0,
 
         /* Component name and version */
-        "basic",
-        OSHMEM_MAJOR_VERSION,
-        OSHMEM_MINOR_VERSION,
-        OSHMEM_RELEASE_VERSION,
+        .mca_component_name = "basic",
+        MCA_BASE_MAKE_VERSION(component, OSHMEM_MAJOR_VERSION, OSHMEM_MINOR_VERSION,
+                              OSHMEM_RELEASE_VERSION),
 
         /* Component open and close functions */
-        basic_open,
-        basic_close,
-        NULL,
-        basic_register
+        .mca_open_component = basic_open,
+        .mca_close_component = basic_close,
+        .mca_register_component_params = basic_register,
     },
-    {
+    .scoll_data = {
         /* The component is checkpoint ready */
         MCA_BASE_METADATA_PARAM_CHECKPOINT
     },
 
     /* Initialization / querying functions */
 
-    mca_scoll_basic_init,
-    mca_scoll_basic_query
+    .scoll_init = mca_scoll_basic_init,
+    .scoll_query = mca_scoll_basic_query,
 };
 
 static int basic_register(void)
@@ -89,7 +90,7 @@ static int basic_register(void)
                                            &mca_scoll_basic_priority_param);
 
     sprintf(help_msg,
-            "Algoritm selection for Barrier (%d - Central Counter, %d - Tournament, %d - Recursive Doubling, %d - Dissemination, %d - Basic, %d - Adaptive)",
+            "Algorithm selection for Barrier (%d - Central Counter, %d - Tournament, %d - Recursive Doubling, %d - Dissemination, %d - Basic, %d - Adaptive)",
             SCOLL_ALG_BARRIER_CENTRAL_COUNTER,
             SCOLL_ALG_BARRIER_TOURNAMENT,
             SCOLL_ALG_BARRIER_RECURSIVE_DOUBLING,
@@ -105,7 +106,7 @@ static int basic_register(void)
                                            &mca_scoll_basic_param_barrier_algorithm);
 
     sprintf(help_msg,
-            "Algoritm selection for Broadcast (%d - Central Counter, %d - Binomial)",
+            "Algorithm selection for Broadcast (%d - Central Counter, %d - Binomial)",
             SCOLL_ALG_BROADCAST_CENTRAL_COUNTER,
             SCOLL_ALG_BROADCAST_BINOMIAL);
     (void) mca_base_component_var_register(comp,
@@ -117,7 +118,7 @@ static int basic_register(void)
                                            &mca_scoll_basic_param_broadcast_algorithm);
 
     sprintf(help_msg,
-            "Algoritm selection for Collect (%d - Central Counter, %d - Tournament, %d - Recursive Doubling, %d - Ring)",
+            "Algorithm selection for Collect (%d - Central Counter, %d - Tournament, %d - Recursive Doubling, %d - Ring)",
             SCOLL_ALG_COLLECT_CENTRAL_COUNTER,
             SCOLL_ALG_COLLECT_TOURNAMENT,
             SCOLL_ALG_COLLECT_RECURSIVE_DOUBLING,
@@ -131,7 +132,7 @@ static int basic_register(void)
                                            &mca_scoll_basic_param_collect_algorithm);
 
     sprintf(help_msg,
-            "Algoritm selection for Reduce (%d - Central Counter, %d - Tournament, %d - Recursive Doubling %d - Linear %d - Log)",
+            "Algorithm selection for Reduce (%d - Central Counter, %d - Tournament, %d - Recursive Doubling %d - Linear %d - Log)",
             SCOLL_ALG_REDUCE_CENTRAL_COUNTER,
             SCOLL_ALG_REDUCE_TOURNAMENT,
             SCOLL_ALG_REDUCE_RECURSIVE_DOUBLING,

@@ -39,13 +39,22 @@
 #include <sys/queue.h>
 #include <pthread.h>
 
+#include <rdma/fi_log.h>
+
 #include "usdf_progress.h"
 #include "usd.h"
+
 
 #define USDF_PROV_NAME "usnic"
 #define USDF_MAJOR_VERS 1
 #define USDF_MINOR_VERS 0
 #define USDF_PROV_VERSION FI_VERSION(USDF_MAJOR_VERS, USDF_MINOR_VERS)
+
+extern struct fi_provider usdf_ops;
+
+#define USDF_WARN(...) FI_WARN(&usdf_ops, FI_LOG_CORE, __VA_ARGS__ )
+#define USDF_INFO(...) FI_INFO(&usdf_ops, FI_LOG_CORE, __VA_ARGS__ )
+#define USDF_DEBUG(...) FI_DBG(&usdf_ops, FI_LOG_CORE, __VA_ARGS__ )
 
 #define USDF_HDR_BUF_ENTRY 64
 #define USDF_EP_CAP_PIO (1ULL << 63)
@@ -390,7 +399,7 @@ int usdf_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 
 
 /* fi_ops_mr */
-int usdf_reg_mr(struct fid_domain *domain, const void *buf, size_t len,
+int usdf_reg_mr(struct fid *fid, const void *buf, size_t len,
 	uint64_t access, uint64_t offset, uint64_t requested_key,
 	uint64_t flags, struct fid_mr **mr_o, void *context);
 

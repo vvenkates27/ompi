@@ -1,7 +1,8 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  *
- * Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * $COPYRIGHT$
@@ -20,7 +21,6 @@
 #include "mtl_ofi.h"
 #include "mtl_ofi_types.h"
 #include "mtl_ofi_request.h"
-#include "mtl_ofi_message.h"
 
 static int ompi_mtl_ofi_component_open(void);
 static int ompi_mtl_ofi_component_query(mca_base_module_t **module, int *priority);
@@ -39,24 +39,23 @@ mca_mtl_ofi_component_t mca_mtl_ofi_component = {
         /* First, the mca_base_component_t struct containing meta
          * information about the component itself */
 
-        {
+        .mtl_version = {
             MCA_MTL_BASE_VERSION_2_0_0,
 
-            "ofi", /* MCA component name */
-            OMPI_MAJOR_VERSION,  /* MCA component major version */
-            OMPI_MINOR_VERSION,  /* MCA component minor version */
-            OMPI_RELEASE_VERSION,  /* MCA component release version */
-            ompi_mtl_ofi_component_open,  /* component open */
-            ompi_mtl_ofi_component_close, /* component close */
-            ompi_mtl_ofi_component_query,
-            ompi_mtl_ofi_component_register
+            .mca_component_name = "ofi",
+            MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION,
+                                  OMPI_RELEASE_VERSION),
+            .mca_open_component = ompi_mtl_ofi_component_open,
+            .mca_close_component = ompi_mtl_ofi_component_close,
+            .mca_query_component = ompi_mtl_ofi_component_query,
+            .mca_register_component_params = ompi_mtl_ofi_component_register,
         },
-        {
+        .mtl_data = {
             /* The component is not checkpoint ready */
             MCA_BASE_METADATA_PARAM_NONE
         },
 
-        ompi_mtl_ofi_component_init,  /* component init */
+        .mtl_init = ompi_mtl_ofi_component_init,
     }
 };
 
@@ -68,7 +67,7 @@ ompi_mtl_ofi_component_register(void)
                                            "provider",
                                            "Name of OFI provider to use",
                                            MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                           OPAL_INFO_LVL_9,
+                                           OPAL_INFO_LVL_4,
                                            MCA_BASE_VAR_SCOPE_READONLY,
                                            &ompi_mtl_ofi.provider_name);
     param_priority = 10;   /* for now give a lower priority than the psm mtl */
@@ -88,12 +87,6 @@ ompi_mtl_ofi_component_open(void)
 {
     ompi_mtl_ofi.base.mtl_request_size =
         sizeof(ompi_mtl_ofi_request_t) - sizeof(struct mca_mtl_request_t);
-
-    OBJ_CONSTRUCT(&ompi_mtl_ofi.free_messages, opal_free_list_t);
-    opal_free_list_init(&ompi_mtl_ofi.free_messages,
-                        sizeof(ompi_mtl_ofi_message_t),
-                        OBJ_CLASS(ompi_mtl_ofi_message_t),
-                        1, -1, 1);
 
     ompi_mtl_ofi.domain =  NULL;
     ompi_mtl_ofi.av     =  NULL;
@@ -115,8 +108,6 @@ ompi_mtl_ofi_component_query(mca_base_module_t **module, int *priority)
 static int
 ompi_mtl_ofi_component_close(void)
 {
-    OBJ_DESTRUCT(&ompi_mtl_ofi.free_messages);
-
     return OMPI_SUCCESS;
 }
 
@@ -126,10 +117,8 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
                             bool enable_mpi_threads)
 {
     int ret, fi_version;
-    struct fi_info hints = {0};
+    struct fi_info *hints;
     struct fi_info *providers = NULL, *prov = NULL;
-    struct fi_domain_attr domain_attr = {0};
-    struct fi_fabric_attr fabric_attr = {0};
     struct fi_cq_attr cq_attr = {0};
     struct fi_av_attr av_attr = {0};
     char ep_name[FI_NAME_MAX] = {0};
@@ -142,28 +131,35 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
      *        In this case, MTL will pass in context into communication calls
      * ep_type:  reliable datagram operation
      * caps:     Capabilities required from the provider.  The bits specified
-     *           with buffered receive and cancel implement MPI semantics.
+     *           implement MPI semantics.
      *           Tagged is used to support tag matching.
      *           We expect to register all memory up front for use with this
      *           endpoint, so the MTL requires dynamic memory regions
      */
-    hints.mode      = FI_CONTEXT;
-    hints.ep_type   = FI_EP_RDM;          /* Reliable datagram         */
-    hints.caps      = FI_TAGGED;          /* Tag matching interface    */
-    hints.caps     |= FI_BUFFERED_RECV;   /* Buffered receives         */
-    hints.caps     |= FI_CANCEL;          /* Support cancel            */
-    hints.caps     |= FI_DYNAMIC_MR;      /* Global dynamic mem region */
+    hints = fi_allocinfo();
+    if (!hints) {
+        opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
+                            "%s:%d: Could not allocate fi_info\n",
+                            __FILE__, __LINE__);
+        goto error;
+    }
+    hints->mode             = FI_CONTEXT;
+    hints->ep_attr->type    = FI_EP_RDM;      /* Reliable datagram         */
+    hints->caps             = FI_TAGGED;      /* Tag matching interface    */
+    hints->caps            |= FI_DYNAMIC_MR;  /* Global dynamic mem region */
 
     /**
      * Refine filter for additional capabilities
      * threading:  Disable locking
      * control_progress:  enable async progress
      */
-    domain_attr.threading        = FI_THREAD_ENDPOINT;
-    domain_attr.control_progress = FI_PROGRESS_AUTO;
-    fabric_attr.prov_name        = ompi_mtl_ofi.provider_name;
-    hints.domain_attr            = &domain_attr;
-    hints.fabric_attr            = &fabric_attr;
+    hints->domain_attr->threading        = FI_THREAD_ENDPOINT;
+    hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
+    if (NULL != ompi_mtl_ofi.provider_name) {
+        hints->fabric_attr->prov_name = strdup(ompi_mtl_ofi.provider_name);
+    } else {
+        hints->fabric_attr->prov_name = NULL;
+    }
 
     /**
      * FI_VERSION provides binary backward and forward compatibility support
@@ -181,7 +177,7 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
                      NULL,          /* Optional name or fabric to resolve       */
                      NULL,          /* Optional service name or port to request */
                      0ULL,          /* Optional flag                            */
-                     &hints,        /* In: Hints to filter providers            */
+                     hints,        /* In: Hints to filter providers            */
                      &providers);   /* Out: List of matching providers          */
     if (0 != ret) {
         opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
@@ -333,6 +329,8 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
     /**
      * Free providers info since it's not needed anymore.
      */
+    fi_freeinfo(hints);
+    hints = NULL;
     fi_freeinfo(providers);
     providers = NULL;
 
@@ -382,6 +380,9 @@ error:
     if (providers) {
         (void) fi_freeinfo(providers);
     }
+    if (hints) {
+        (void) fi_freeinfo(hints);
+    }
     if (ompi_mtl_ofi.av) {
         (void) fi_close((fid_t)ompi_mtl_ofi.av);
     }
@@ -404,82 +405,4 @@ error:
 }
 
 
-int
-ompi_mtl_ofi_get_error(int error_num)
-{
-    int ret;
 
-    switch (error_num) {
-    case 0:
-        ret = OMPI_SUCCESS;
-        break;
-    default:
-        ret = OMPI_ERROR;
-    }
-
-    return ret;
-}
-
-
-int
-ompi_mtl_ofi_progress(void)
-{
-    int ret, count = 0;
-    struct fi_cq_tagged_entry wc;
-    struct fi_cq_err_entry error;
-    ompi_mtl_ofi_request_t *ofi_req = NULL;
-
-    /**
-     * Read the work completions from the CQ.
-     * From the completion's op_context, we get the associated OFI request.
-     * Call the request's callback.
-     */
-    while (true) {
-        memset(&wc, 0, sizeof(wc));
-        ret = fi_cq_read(ompi_mtl_ofi.cq, (void *)&wc, 1);
-        if (ret > 0) {
-            count++;
-            if (NULL != wc.op_context) {
-                ofi_req = TO_OFI_REQ(wc.op_context);
-                assert(ofi_req);
-                ret = ofi_req->event_callback(&wc, ofi_req);
-                if (OMPI_SUCCESS != ret) {
-                    opal_output(ompi_mtl_base_framework.framework_output,
-                                "Error returned by request event callback: %d",
-                                ret);
-                    abort();
-                }
-            }
-        } else if (ret == -FI_EAVAIL) {
-            /**
-             * An error occured and is being reported via the CQ.
-             * Read the error and forward it to the upper layer.
-             */
-            memset(&error, 0, sizeof(error));
-            ret = fi_cq_readerr(ompi_mtl_ofi.cq,
-                                &error,
-                                0);
-            if (ret) {
-                opal_output(ompi_mtl_base_framework.framework_output,
-                            "Error returned from fi_cq_readerr: %d", ret);
-            }
-
-            assert(error.op_context);
-            ofi_req = TO_OFI_REQ(error.op_context);
-            assert(ofi_req);
-            ret = ofi_req->error_callback(&error, ofi_req);
-            if (OMPI_SUCCESS != ret) {
-                opal_output(ompi_mtl_base_framework.framework_output,
-                        "Error returned by request error callback: %d",
-                        ret);
-                abort();
-            }
-        } else {
-            /**
-             * The CQ is empty. Return.
-             */
-            break;
-        }
-    }
-    return count;
-}

@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -9,9 +10,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2011 Los Alamos National Security, LLC.
- *                         All rights reserved.
+ * Copyright (c) 2007-2015 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -57,37 +58,26 @@ static int mmap_runtime_query(mca_base_module_t **module,
  * and pointers to our public functions in it
  */
 opal_shmem_mmap_component_t mca_shmem_mmap_component = {
-    /* ////////////////////////////////////////////////////////////////////// */
-    /* super */
-    /* ////////////////////////////////////////////////////////////////////// */
-    {
-        /**
-         * common MCA component data
-         */
-        {
+    .super = {
+        .base_version = {
             OPAL_SHMEM_BASE_VERSION_2_0_0,
 
             /* component name and version */
-            "mmap",
-            OPAL_MAJOR_VERSION,
-            OPAL_MINOR_VERSION,
-            OPAL_RELEASE_VERSION,
+            .mca_component_name = "mmap",
+            MCA_BASE_MAKE_VERSION(component, OPAL_MAJOR_VERSION, OPAL_MINOR_VERSION,
+                                  OPAL_RELEASE_VERSION),
 
-            /* component open */
-            mmap_open,
-            /* component close */
-            mmap_close,
-            /* component query */
-            mmap_query,
-            /* component register */
-            mmap_register
+            .mca_open_component = mmap_open,
+            .mca_close_component = mmap_close,
+            .mca_query_component = mmap_query,
+            .mca_register_component_params = mmap_register,
         },
         /* MCA v2.0.0 component meta data */
-        {
+        .base_data = {
             /* the component is checkpoint ready */
             MCA_BASE_METADATA_PARAM_CHECKPOINT
         },
-        mmap_runtime_query,
+        .runtime_query = mmap_runtime_query,
     },
 };
 

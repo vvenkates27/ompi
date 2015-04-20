@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2012      Sandia National Laboratories.  All rights reserved.
- * Copyright (c) 2014      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2014-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
  *
@@ -21,7 +21,7 @@
 
 /** Communication buffer for packing messages */
 struct ompi_osc_pt2pt_frag_t {
-    ompi_free_list_item_t super;
+    opal_free_list_item_t super;
     /* target rank of buffer */
     int target;
     unsigned char *buffer;
@@ -44,15 +44,14 @@ extern int ompi_osc_pt2pt_frag_start(ompi_osc_pt2pt_module_t *module, ompi_osc_p
 extern int ompi_osc_pt2pt_frag_flush_target(ompi_osc_pt2pt_module_t *module, int target);
 extern int ompi_osc_pt2pt_frag_flush_all(ompi_osc_pt2pt_module_t *module);
 
-
 /*
  * Note: module lock must be held during this operation
  */
-static inline int ompi_osc_pt2pt_frag_alloc(ompi_osc_pt2pt_module_t *module, int target,
-                                           size_t request_len, ompi_osc_pt2pt_frag_t **buffer,
-                                           char **ptr)
+static inline int ompi_osc_pt2pt_frag_alloc (ompi_osc_pt2pt_module_t *module, int target,
+                                             size_t request_len, ompi_osc_pt2pt_frag_t **buffer,
+                                             char **ptr)
 {
-    ompi_osc_pt2pt_frag_t *curr = module->peers[target].active_frag;
+    ompi_osc_pt2pt_frag_t *curr;
     int ret;
 
     /* osc pt2pt headers can have 64-bit values. these will need to be aligned
@@ -65,8 +64,9 @@ static inline int ompi_osc_pt2pt_frag_alloc(ompi_osc_pt2pt_module_t *module, int
     }
 
     OPAL_THREAD_LOCK(&module->lock);
+    curr = module->peers[target].active_frag;
     if (NULL == curr || curr->remain_len < request_len) {
-        ompi_free_list_item_t *item = NULL;
+        opal_free_list_item_t *item = NULL;
 
         if (NULL != curr) {
             curr->remain_len = 0;
@@ -83,7 +83,7 @@ static inline int ompi_osc_pt2pt_frag_alloc(ompi_osc_pt2pt_module_t *module, int
             }
         }
 
-        OMPI_FREE_LIST_GET_MT(&mca_osc_pt2pt_component.frags, item);
+        item = opal_free_list_get (&mca_osc_pt2pt_component.frags);
         if (OPAL_UNLIKELY(NULL == item)) {
             return OMPI_ERR_OUT_OF_RESOURCE;
         }

@@ -35,7 +35,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <assert.h>
 #include <sys/socket.h>
 
 #ifdef __cplusplus
@@ -47,6 +46,9 @@ extern "C" {
 #define container_of(ptr, type, field) \
 	((type *) ((char *)ptr - offsetof(type, field)))
 #endif
+
+#define FI_DEFINE_HANDLE(name) struct name##_s { int dummy; }; \
+				typedef struct name##_s *name
 
 enum {
 	FI_MAJOR_VERSION	= 1,
@@ -99,7 +101,6 @@ typedef struct fid *fid_t;
 #define FI_ATOMICS		FI_ATOMIC
 #define FI_DYNAMIC_MR		(1ULL << 7)
 #define FI_NAMED_RX_CTX		(1ULL << 8)
-#define FI_BUFFERED_RECV	(1ULL << 9)
 #define FI_DIRECTED_RECV	(1ULL << 10)
 
 /*
@@ -126,15 +127,17 @@ typedef struct fid *fid_t;
 #define FI_REMOTE_WRITE		(1ULL << 21)
 
 #define FI_REMOTE_CQ_DATA	(1ULL << 24)
-#define FI_EVENT		(1ULL << 25)
+#define FI_CANCEL		(1ULL << 25)
+#define FI_MORE			(1ULL << 26)
+#define FI_PEEK			(1ULL << 27)
+#define FI_TRIGGER		(1ULL << 28)
+#define FI_FENCE		(1ULL << 29)
+
+#define FI_EVENT		(1ULL << 32)
 #define FI_COMPLETION		FI_EVENT
-#define FI_REMOTE_SIGNAL	(1ULL << 26)
-#define FI_REMOTE_COMPLETE	(1ULL << 27)
-#define FI_CANCEL		(1ULL << 28)
-#define FI_MORE			(1ULL << 29)
-#define FI_PEEK			(1ULL << 30)
-#define FI_TRIGGER		(1ULL << 31)
-#define FI_FENCE		(1ULL << 32)
+#define FI_INJECT_COMPLETE	(1ULL << 33)
+#define FI_TRANSMIT_COMPLETE	(1ULL << 34)
+#define FI_COMMIT_COMPLETE	(1ULL << 35)
 
 
 struct fi_ioc {
@@ -156,9 +159,15 @@ enum {
 
 #define FI_ADDR_UNSPEC		UINT64_MAX
 #define FI_ADDR_NOTAVAIL	UINT64_MAX
-#define FI_SHARED_CONTEXT	UINT64_MAX
+#define FI_SHARED_CONTEXT	(-(size_t)1)
 typedef uint64_t		fi_addr_t;
-typedef void *			fi_connreq_t;
+FI_DEFINE_HANDLE(fi_connreq_t);
+
+enum fi_av_type {
+	FI_AV_UNSPEC,
+	FI_AV_MAP,
+	FI_AV_TABLE
+};
 
 enum fi_progress {
 	FI_PROGRESS_UNSPEC,
@@ -191,8 +200,8 @@ enum fi_resource_mgmt {
 #define FI_ORDER_SAR		(1 << 6)
 #define FI_ORDER_SAW		(1 << 7)
 #define FI_ORDER_SAS		(1 << 8)
-#define FI_ORDER_RECV		(1 << 9)
-#define FI_ORDER_STRICT		0xFFFFFFFF
+#define FI_ORDER_STRICT		0x1FF
+#define FI_ORDER_DATA		(1 << 16)
 
 enum fi_ep_type {
 	FI_EP_UNSPEC,
@@ -223,6 +232,7 @@ enum {
 #define FI_PROV_MR_ATTR		(1ULL << 2)
 #define FI_MSG_PREFIX		(1ULL << 3)
 #define FI_ASYNC_IOV		(1ULL << 4)
+#define FI_RX_CQ_DATA		(1ULL << 5)
 
 struct fi_tx_attr {
 	uint64_t		caps;
@@ -248,18 +258,15 @@ struct fi_rx_attr {
 };
 
 struct fi_ep_attr {
+	enum fi_ep_type		type;
 	uint32_t		protocol;
 	uint32_t		protocol_version;
 	size_t			max_msg_size;
-	size_t			inject_size;
-	size_t			total_buffered_recv;
 	size_t			msg_prefix_size;
 	size_t			max_order_raw_size;
 	size_t			max_order_war_size;
 	size_t			max_order_waw_size;
 	uint64_t		mem_tag_format;
-	uint64_t		msg_order;
-	uint64_t		comp_order;
 	size_t			tx_ctx_cnt;
 	size_t			rx_ctx_cnt;
 };
@@ -271,6 +278,7 @@ struct fi_domain_attr {
 	enum fi_progress	control_progress;
 	enum fi_progress	data_progress;
 	enum fi_resource_mgmt	resource_mgmt;
+	enum fi_av_type		av_type;
 	size_t			mr_key_size;
 	size_t			cq_data_size;
 	size_t			cq_cnt;
@@ -292,7 +300,6 @@ struct fi_info {
 	struct fi_info		*next;
 	uint64_t		caps;
 	uint64_t		mode;
-	enum fi_ep_type		ep_type;
 	uint32_t		addr_format;
 	size_t			src_addrlen;
 	size_t			dest_addrlen;
@@ -353,6 +360,11 @@ int fi_getinfo(uint32_t version, const char *node, const char *service,
 void fi_freeinfo(struct fi_info *info);
 struct fi_info *fi_dupinfo(const struct fi_info *info);
 
+static inline struct fi_info *fi_allocinfo(void)
+{
+	return fi_dupinfo(NULL);
+}
+
 struct fi_ops_fabric {
 	size_t	size;
 	int	(*domain)(struct fid_fabric *fabric, struct fi_info *info,
@@ -398,6 +410,7 @@ enum {
 	 */
 	FI_ALIAS,		/* struct fi_alias * */
 	FI_GETWAIT,		/* void * wait object */
+	FI_ENABLE,		/* NULL */
 };
 
 static inline int fi_control(struct fid *fid, int command, void *arg)
@@ -440,6 +453,8 @@ enum fi_type {
 	FI_TYPE_ATOMIC_TYPE,
 	FI_TYPE_ATOMIC_OP,
 	FI_TYPE_VERSION,
+	FI_TYPE_EQ_EVENT,
+	FI_TYPE_CQ_EVENT_FLAGS,
 };
 
 char *fi_tostr(const void *data, enum fi_type datatype);

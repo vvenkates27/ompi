@@ -339,6 +339,7 @@ usdf_msg_send_segment(struct usdf_tx *tx, struct usdf_ep *ep)
 		hdr->msg.m.rc_data.seqno = htons(ep->e.msg.ep_next_tx_seq);
 		++ep->e.msg.ep_next_tx_seq;
 
+		sge_len = resid;
 		ptr = (uint8_t *)(hdr + 1);
 		while (resid > 0) {
 			memcpy(ptr, cur_ptr, cur_resid);
@@ -350,7 +351,6 @@ usdf_msg_send_segment(struct usdf_tx *tx, struct usdf_ep *ep)
 		}
 
 		/* add packet lengths */
-		sge_len = resid;
 		hdr->hdr.uh_ip.tot_len = htons(
 				sge_len + sizeof(struct rudp_pkt) -
 				sizeof(struct ether_header));
@@ -360,7 +360,7 @@ usdf_msg_send_segment(struct usdf_tx *tx, struct usdf_ep *ep)
 				 sizeof(struct iphdr)) + sge_len);
 
 		index = _usd_post_send_one(wq, hdr,
-				resid + sizeof(*hdr), 1);
+				sge_len + sizeof(*hdr), 1);
 	} else {
 		struct vnic_wq *vwq;
 		u_int8_t offload_mode = 0, eop;
@@ -425,12 +425,12 @@ usdf_msg_send_segment(struct usdf_tx *tx, struct usdf_ep *ep)
 				(sizeof(struct rudp_pkt) -
 				 sizeof(struct ether_header) -
 				 sizeof(struct iphdr)) + sent);
-if (0) {
+#if 0
 if ((random() % 177) == 0 && resid == 0) {
 	hdr->hdr.uh_eth.ether_type = 0;
 //printf("BORK seq %u\n", ep->e.msg.ep_next_tx_seq);
 }
-}
+#endif
 
 		if (resid == 0) {
 			hdr->msg.opcode = htons(RUDP_OP_LAST);

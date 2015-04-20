@@ -34,19 +34,22 @@
 #  include <config.h>
 #endif /* HAVE_CONFIG_H */
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "sock.h"
 #include "sock_util.h"
 
-extern const char const sock_dom_name[];
+#define SOCK_LOG_INFO(...) _SOCK_LOG_INFO(FI_LOG_DOMAIN, __VA_ARGS__)
+#define SOCK_LOG_ERROR(...) _SOCK_LOG_ERROR(FI_LOG_DOMAIN, __VA_ARGS__)
 
 const struct fi_domain_attr sock_domain_attr = {
 	.name = NULL,
 	.threading = FI_THREAD_SAFE,
 	.control_progress = FI_PROGRESS_AUTO,
 	.data_progress = FI_PROGRESS_AUTO,
+	.resource_mgmt = FI_RM_ENABLED,
 	.mr_key_size = sizeof(uint16_t),
 	.cq_data_size = sizeof(uint64_t),
 	.ep_cnt = SOCK_EP_MAX_EP_CNT,
@@ -100,6 +103,17 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 		SOCK_LOG_INFO("Data progress mode not supported!\n");
 		return -FI_ENODATA;
 	}
+
+	switch (attr->resource_mgmt){
+	case FI_RM_UNSPEC:
+	case FI_RM_DISABLED:
+	case FI_RM_ENABLED:
+		break;
+
+	default:
+		SOCK_LOG_INFO("Resource mgmt not supported!\n");
+		return -FI_ENODATA;
+	}
 	
 	if(attr->cq_data_size > sock_domain_attr.cq_data_size)
 		return -FI_ENODATA;
@@ -119,18 +133,8 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 static int sock_dom_close(struct fid *fid)
 {
 	struct sock_domain *dom;
-	void *res;
-	int c;
-
 	dom = container_of(fid, struct sock_domain, dom_fid.fid);
 	if (atomic_get(&dom->ref)) {
-		return -FI_EBUSY;
-	}
-
-	dom->listening = 0;
-	write(dom->signal_fds[0], &c, 1);
-	if (pthread_join(dom->listen_thread, &res)) {
-		SOCK_LOG_ERROR("could not join listener thread, errno = %d\n", errno);
 		return -FI_EBUSY;
 	}
 
@@ -239,17 +243,25 @@ struct sock_mr *sock_mr_verify_key(struct sock_domain *domain, uint16_t key,
 struct sock_mr *sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
 			void *buf, size_t len, uint64_t access)
 {
-	uint64_t key = (uint64_t)desc;
+	uint64_t key = (uintptr_t) desc;
 	return sock_mr_verify_key(domain, key, buf, len, access);
 }
 
-static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr,
+static int sock_regattr(struct fid *fid, const struct fi_mr_attr *attr,
 		uint64_t flags, struct fid_mr **mr)
 {
 	struct fi_eq_entry eq_entry;
 	struct sock_domain *dom;
 	struct sock_mr *_mr;
 	uint64_t key;
+	struct fid_domain *domain;
+
+	if (fid->fclass != FI_CLASS_DOMAIN) {
+		SOCK_LOG_ERROR("memory registration only supported "
+				"for struct fid_domain\n");
+		return -FI_EINVAL;
+	}
+	domain = container_of(fid, struct fid_domain, fid);
 
 	dom = container_of(domain, struct sock_domain, dom_fid);
 	if (!(dom->info.mode & FI_PROV_MR_ATTR) && 
@@ -278,7 +290,7 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 	if (idm_set(&dom->mr_idm, key, _mr) < 0)
 		goto err;
 	_mr->mr_fid.key = key;
-	_mr->mr_fid.mem_desc = (void *)key;
+	_mr->mr_fid.mem_desc = (void *) (uintptr_t) key;
 	fastlock_release(&dom->lock);
 
 	_mr->iov_count = attr->iov_count;
@@ -302,7 +314,7 @@ err:
 	return -errno;
 }
 
-static int sock_regv(struct fid_domain *domain, const struct iovec *iov,
+static int sock_regv(struct fid *fid, const struct iovec *iov,
 		size_t count, uint64_t access,
 		uint64_t offset, uint64_t requested_key,
 		uint64_t flags, struct fid_mr **mr, void *context)
@@ -315,10 +327,10 @@ static int sock_regv(struct fid_domain *domain, const struct iovec *iov,
 	attr.offset = offset;
 	attr.requested_key = requested_key;
 	attr.context = context;
-	return sock_regattr(domain, &attr, flags, mr);
+	return sock_regattr(fid, &attr, flags, mr);
 }
 
-static int sock_reg(struct fid_domain *domain, const void *buf, size_t len,
+static int sock_reg(struct fid *fid, const void *buf, size_t len,
 		uint64_t access, uint64_t offset, uint64_t requested_key,
 		uint64_t flags, struct fid_mr **mr, void *context)
 {
@@ -326,11 +338,11 @@ static int sock_reg(struct fid_domain *domain, const void *buf, size_t len,
 
 	iov.iov_base = (void *) buf;
 	iov.iov_len = len;
-	return sock_regv(domain, &iov, 1, access,  offset, requested_key,
+	return sock_regv(fid, &iov, 1, access,  offset, requested_key,
 			 flags, mr, context);
 }
 
-int sock_dom_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+static int sock_dom_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 {
 	struct sock_domain *dom;
 	struct sock_eq *eq;
@@ -348,10 +360,10 @@ int sock_dom_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	return 0;
 }
 
-int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
+static int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
 			 struct fid_ep **ep, void *context)
 {
-	switch (info->ep_type) {
+	switch (info->ep_attr->type) {
 	case FI_EP_RDM:
 		return sock_rdm_ep(domain, info, ep, context);
 	case FI_EP_DGRAM:
@@ -363,10 +375,10 @@ int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
 	}
 }
 
-int sock_scalable_ep(struct fid_domain *domain, struct fi_info *info,
+static int sock_scalable_ep(struct fid_domain *domain, struct fi_info *info,
 		     struct fid_ep **sep, void *context)
 {
-	switch (info->ep_type) {
+	switch (info->ep_attr->type) {
 	case FI_EP_RDM:
 		return sock_rdm_sep(domain, info, sep, context);
 	case FI_EP_DGRAM:
@@ -408,9 +420,11 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context)
 {
-	int ret, flags;
 	struct sock_domain *sock_domain;
+	struct sock_fabric *fab;
+	int ret;
 
+	fab = container_of(fabric, struct sock_fabric, fab_fid);
 	if(info && info->domain_attr){
 		ret = sock_verify_domain_attr(info->domain_attr);
 		if(ret)
@@ -424,16 +438,8 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	fastlock_init(&sock_domain->lock);
 	atomic_init(&sock_domain->ref, 0);
 
-	if(info && info->src_addr) {
-		if (getnameinfo(info->src_addr, info->src_addrlen, NULL, 0,
-				sock_domain->service, sizeof(sock_domain->service),
-				NI_NUMERICSERV)) {
-			SOCK_LOG_ERROR("could not resolve src_addr\n");
-			goto err;
-		}
+	if (info) {
 		sock_domain->info = *info;
-		memcpy(&sock_domain->src_addr, info->src_addr, 
-		       sizeof(struct sockaddr_in));
 	} else {
 		SOCK_LOG_ERROR("invalid fi_info\n");
 		goto err;
@@ -452,24 +458,18 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		sock_domain->progress_mode = info->domain_attr->data_progress;
 
 	sock_domain->pe = sock_pe_init(sock_domain);
-	if(!sock_domain->pe){
+	if (!sock_domain->pe){
 		SOCK_LOG_ERROR("Failed to init PE\n");
 		goto err;
 	}
 
-	sock_domain->ep_count = AF_INET;
-	sock_domain->r_cmap.domain = sock_domain;
-	fastlock_init(&sock_domain->r_cmap.lock);
-	if(socketpair(AF_UNIX, SOCK_STREAM, 0, sock_domain->signal_fds) < 0)
+	if (sock_conn_map_init(&sock_domain->r_cmap, 128))
 		goto err;
 
-	flags = fcntl(sock_domain->signal_fds[1], F_GETFL, 0);
-	fcntl(sock_domain->signal_fds[1], F_SETFL, flags | O_NONBLOCK);
-	sock_conn_listen(sock_domain);
+	sock_domain->r_cmap.domain = sock_domain;
+	fastlock_init(&sock_domain->r_cmap.lock);
 
-	while(!(volatile int)sock_domain->listening)
-		pthread_yield();
-
+	sock_domain->fab = fab;
 	*dom = &sock_domain->dom_fid;
 	return 0;
 

@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -11,6 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2010-2012 Sandia National Laboratories.  All rights reserved.
  * Copyright (c) 2014      Bull SAS.  All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -89,9 +92,9 @@ struct mca_btl_portals4_module_t {
     uint32_t interface_num;
 
     /* fragment free lists */
-    ompi_free_list_t portals_frag_eager;
-    ompi_free_list_t portals_frag_max;
-    ompi_free_list_t portals_frag_user;
+    opal_free_list_t portals_frag_eager;
+    opal_free_list_t portals_frag_max;
+    opal_free_list_t portals_frag_user;
 
     opal_list_t portals_recv_blocks;
 
@@ -235,22 +238,11 @@ int mca_btl_portals4_free(struct mca_btl_base_module_t* btl_base,
 mca_btl_base_descriptor_t* 
 mca_btl_portals4_prepare_src(struct mca_btl_base_module_t* btl_base,
                             struct mca_btl_base_endpoint_t* peer,
-                            mca_mpool_base_registration_t* registration, 
                             struct opal_convertor_t* convertor,
                             uint8_t order,
                             size_t reserve,
                             size_t* size,
                             uint32_t flags);
-
-mca_btl_base_descriptor_t* 
-mca_btl_portals4_prepare_dst(struct mca_btl_base_module_t* btl_base, 
-                            struct mca_btl_base_endpoint_t* peer,
-                            mca_mpool_base_registration_t* registration, 
-                            struct opal_convertor_t* convertor,
-                            uint8_t order,
-                            size_t reserve,
-                            size_t* size,
-                            uint32_t flags); 
 
 int mca_btl_portals4_send(struct mca_btl_base_module_t* btl_base,
                          struct mca_btl_base_endpoint_t* btl_peer,
@@ -276,9 +268,23 @@ int mca_btl_portals4_put(struct mca_btl_base_module_t* btl_base,
 
 int mca_btl_portals4_get(struct mca_btl_base_module_t* btl_base,
                         struct mca_btl_base_endpoint_t* btl_peer,
-                        struct mca_btl_base_descriptor_t* decriptor);
+                        void *local_address,
+                        uint64_t remote_address,
+                        struct mca_btl_base_registration_handle_t *local_handle,
+                        struct mca_btl_base_registration_handle_t *remote_handle,
+                        size_t size,
+                        int flags,
+                        int order,
+                        mca_btl_base_rdma_completion_fn_t cbfunc,
+                        void *cbcontext,
+                        void *cbdata);
 
 int mca_btl_portals4_get_error(int ptl_error);
+
+struct mca_btl_base_registration_handle_t {
+    /** Portals4 match bits */
+    ptl_match_bits_t key;
+};
 
 /*
  * global structures

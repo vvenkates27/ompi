@@ -54,9 +54,10 @@ libfabric_core_headers = \
 	libfabric/include/fi_enosys.h \
 	libfabric/include/fi_indexer.h \
 	libfabric/include/fi_list.h \
-	libfabric/include/fi_log.h \
 	libfabric/include/fi_rbuf.h \
 	libfabric/include/prov.h \
+	libfabric/include/linux/osd.h \
+	libfabric/include/osx/osd.h \
 	libfabric/include/rdma/fabric.h \
 	libfabric/include/rdma/fi_atomic.h \
 	libfabric/include/rdma/fi_cm.h \
@@ -64,6 +65,7 @@ libfabric_core_headers = \
 	libfabric/include/rdma/fi_endpoint.h \
 	libfabric/include/rdma/fi_eq.h \
 	libfabric/include/rdma/fi_errno.h \
+	libfabric/include/rdma/fi_log.h \
 	libfabric/include/rdma/fi_prov.h \
 	libfabric/include/rdma/fi_rma.h \
 	libfabric/include/rdma/fi_tagged.h \
@@ -215,13 +217,6 @@ lib@OPAL_LIB_PREFIX@mca_common_libfabric_la_LIBADD = $(libadd)
 lib@OPAL_LIB_PREFIX@mca_common_libfabric_noinst_la_SOURCES = $(headers) $(sources)
 lib@OPAL_LIB_PREFIX@mca_common_libfabric_noinst_la_CPPFLAGS = $(cppflags)
 lib@OPAL_LIB_PREFIX@mca_common_libfabric_noinst_la_LIBADD = $(libadd)
-
-# Conditionally install the header files
-
-if WANT_INSTALL_HEADERS
-opaldir = $(opalincludedir)/$(subdir)
-opal_HEADERS = $(headers)
-endif
 
 # These two rules will sym link the "noinst" libtool library filename
 # to the installable libtool library filename in the case where we are

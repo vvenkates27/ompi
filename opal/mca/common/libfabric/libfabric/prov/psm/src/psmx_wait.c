@@ -86,7 +86,8 @@ static void psmx_wait_start_progress(struct psmx_fid_domain *domain)
 		pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_DETACHED);
 		err = pthread_create(&psmx_wait_thread, &attr, psmx_wait_progress, (void *)domain);
 		if (err)
-			fprintf(stderr, "%s: cannot create wait progress thread\n", __func__);
+			FI_WARN(&psmx_prov, FI_LOG_EQ,
+				"cannot create wait progress thread\n");
 		pthread_attr_destroy(&attr);
 		while (!psmx_wait_thread_ready)
 			;
@@ -108,17 +109,15 @@ int psmx_wait_get_obj(struct psmx_fid_wait *wait, void *arg)
 {
 	void *obj_ptr;
 	int obj_size = 0;
-	int obj_type = FI_WAIT_NONE;
 	struct fi_mutex_cond mutex_cond;
 
 	if (!arg)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	if (wait) {
 		switch (wait->type) {
 			case FI_WAIT_FD:
 				obj_size = sizeof(wait->fd[0]);
-				obj_type = wait->type;
 				obj_ptr = &wait->fd[0];
 				break;
 
@@ -126,7 +125,6 @@ int psmx_wait_get_obj(struct psmx_fid_wait *wait, void *arg)
 				mutex_cond.mutex = &wait->mutex;
 				mutex_cond.cond = &wait->cond;
 				obj_size = sizeof(mutex_cond);
-				obj_type = wait->type;
 				obj_ptr = &mutex_cond;
 				break;
 
@@ -191,7 +189,9 @@ void psmx_wait_signal(struct fid_wait *wait)
 		break;
 
 	case FI_WAIT_FD:
-		write(wait_priv->fd[1], &c, 1);
+		if (write(wait_priv->fd[1], &c, 1) != 1)
+			FI_WARN(&psmx_prov, FI_LOG_EQ,
+				"error signaling wait object\n");
 		break;
 
 	case FI_WAIT_MUTEX_COND:
@@ -279,9 +279,10 @@ int psmx_wait_open(struct fid_fabric *fabric, struct fi_wait_attr *attr,
 			break;
 	 
 		default:
-			psmx_debug("%s: attr->wait_obj=%d, supported=%d,%d,%d\n",
-					__func__, attr->wait_obj, FI_WAIT_UNSPEC,
-					FI_WAIT_FD, FI_WAIT_MUTEX_COND);
+			FI_INFO(&psmx_prov, FI_LOG_EQ,
+				"attr->wait_obj=%d, supported=%d,%d,%d\n",
+				attr->wait_obj, FI_WAIT_UNSPEC,
+				FI_WAIT_FD, FI_WAIT_MUTEX_COND);
 			return -FI_EINVAL;
 		}
 	}

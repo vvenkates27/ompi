@@ -221,18 +221,9 @@ fail:
 }
 
 /*
- * release queue resources
- */
-void
-usdf_ep_rdm_release_queues(struct usdf_ep *ep)
-{
-	/* XXX */
-}
-
-/*
  * Allocate any missing queue resources for this endpoint
  */
-int
+static int
 usdf_ep_rdm_get_queues(struct usdf_ep *ep)
 {
 	struct usdf_tx *tx;
@@ -556,7 +547,7 @@ usdf_rdm_tx_ctx_close(fid_t fid)
 	return 0;
 }
 
-int
+static int
 usdf_rx_rdm_port_bind(struct usdf_rx *rx, struct fi_info *info)
 {
 	struct sockaddr_in *sin;
@@ -632,7 +623,6 @@ usdf_ep_rdm_close(fid_t fid)
 
 static struct fi_ops_ep usdf_base_rdm_ops = {
 	.size = sizeof(struct fi_ops_ep),
-	.enable = usdf_ep_rdm_enable,
 	.cancel = usdf_ep_rdm_cancel,
 	.getopt = usdf_ep_rdm_getopt,
 	.setopt = usdf_ep_rdm_setopt,
@@ -666,11 +656,31 @@ static struct fi_ops_msg usdf_rdm_ops = {
 	.injectdata = fi_no_msg_injectdata,
 };
 
+static int usdf_ep_rdm_control(struct fid *fid, int command, void *arg)
+{
+	struct fid_ep *ep;
+
+	switch (fid->fclass) {
+	case FI_CLASS_EP:
+		ep = container_of(fid, struct fid_ep, fid);
+		switch (command) {
+		case FI_ENABLE:
+			return usdf_ep_rdm_enable(ep);
+			break;
+		default:
+			return -FI_ENOSYS;
+		}
+		break;
+	default:
+		return -FI_ENOSYS;
+	}
+}
+
 static struct fi_ops usdf_ep_rdm_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = usdf_ep_rdm_close,
 	.bind = usdf_ep_rdm_bind,
-	.control = fi_no_control,
+	.control = usdf_ep_rdm_control,
 	.ops_open = fi_no_ops_open
 };
 
@@ -741,6 +751,9 @@ usdf_ep_rdm_open(struct fid_domain *domain, struct fi_info *info,
 			tx->tx_attr = *info->tx_attr;
 		} else {
 			ret = usdf_rdm_fill_tx_attr(&tx->tx_attr);
+			if (ret != 0) {
+				goto fail;
+			}
 		}
 		TAILQ_INIT(&tx->t.rdm.tx_free_wqe);
 		TAILQ_INIT(&tx->t.rdm.tx_rdc_ready);
@@ -779,6 +792,9 @@ usdf_ep_rdm_open(struct fid_domain *domain, struct fi_info *info,
 			rx->rx_attr = *info->rx_attr;
 		} else {
 			ret = usdf_rdm_fill_rx_attr(&rx->rx_attr);
+			if (ret != 0) {
+				goto fail;
+			}
 		}
 		TAILQ_INIT(&rx->r.rdm.rx_free_rqe);
 		TAILQ_INIT(&rx->r.rdm.rx_posted_rqe);
@@ -803,6 +819,9 @@ fail:
 	if (tx != NULL) {
 		free(tx);
 		atomic_dec(&udp->dom_refcnt);
+	}
+	if (ep != NULL) {
+		free(ep);
 	}
 	return ret;
 }

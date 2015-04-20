@@ -1,3 +1,5 @@
+# Makefile.am for libfabric
+
 AM_CPPFLAGS = \
 	-I$(srcdir)/include \
 	-D_GNU_SOURCE \
@@ -25,7 +27,8 @@ rdmainclude_HEADERS =
 # internal utility functions shared by in-tree providers:
 common_srcs = \
 	src/common.c \
-	src/enosys.c
+	src/enosys.c \
+	src/log.c
 
 # ensure dl-built providers link back to libfabric
 linkback = $(top_builddir)/src/libfabric.la
@@ -35,13 +38,24 @@ src_libfabric_la_SOURCES = \
 	include/fi_enosys.h \
 	include/fi_indexer.h \
 	include/fi_list.h \
-	include/fi_log.h \
 	include/fi_rbuf.h \
 	include/prov.h \
 	src/fabric.c \
 	src/fi_tostr.c \
-	src/log.c \
 	$(common_srcs)
+
+if MACOS
+src_libfabric_la_SOURCES += src/osx/osd.c
+src_libfabric_la_SOURCES += include/osx/osd.h
+endif
+
+if LINUX
+src_libfabric_la_SOURCES += include/linux/osd.h
+endif
+
+src_libfabric_la_CPPFLAGS = $(AM_CPPFLAGS)
+src_libfabric_la_LDFLAGS =
+src_libfabric_la_LIBADD =
 
 if HAVE_SOCKETS
 _sockets_files = \
@@ -66,18 +80,18 @@ _sockets_files = \
 	prov/sockets/src/sock_msg.c \
 	prov/sockets/src/sock_rma.c \
 	prov/sockets/src/sock_atomic.c \
-	prov/sockets/src/sock_util.c \
 	prov/sockets/src/sock_util.h \
 	prov/sockets/src/indexer.c
 
 if HAVE_SOCKETS_DL
 pkglib_LTLIBRARIES += libsockets-fi.la
 libsockets_fi_la_SOURCES = $(_sockets_files) $(common_srcs)
-libsockets_fi_la_LIBADD = $(linkback)
+libsockets_fi_la_LIBADD = $(linkback) $(sockets_shm_LIBS)
 libsockets_fi_la_LDFLAGS = -module -avoid-version -shared -export-dynamic
 libsockets_fi_la_DEPENDENCIES = $(linkback)
 else !HAVE_SOCKETS_DL
 src_libfabric_la_SOURCES += $(_sockets_files)
+src_libfabric_la_LIBADD += $(sockets_shm_LIBS)
 endif !HAVE_SOCKETS_DL
 
 endif HAVE_SOCKETS
@@ -88,11 +102,20 @@ _verbs_files = prov/verbs/src/fi_verbs.c
 if HAVE_VERBS_DL
 pkglib_LTLIBRARIES += libverbs-fi.la
 libverbs_fi_la_SOURCES = $(_verbs_files) $(common_srcs)
-libverbs_fi_la_LIBADD = $(linkback)
-libverbs_fi_la_LDFLAGS = -module -avoid-version -shared -export-dynamic
+# Technically, verbs_ibverbs_CPPFLAGS and verbs_rdmacm_CPPFLAGS could
+# be different, but it is highly unlikely that they ever will be.  So
+# only list verbs_ibverbs_CPPFLAGS here.  Same with verbs_*_LDFLAGS,
+# below.
+libverbs_fi_la_CPPFLAGS = $(AM_CPPFLAGS) $(verbs_ibverbs_CPPFLAGS)
+libverbs_fi_la_LDFLAGS = \
+    -module -avoid-version -shared -export-dynamic $(verbs_ibverbs_LDFLAGS)
+libverbs_fi_la_LIBADD = $(linkback) $(verbs_rdmacm_LIBS) $(verbs_ibverbs_LIBS)
 libverbs_fi_la_DEPENDENCIES = $(linkback)
 else !HAVE_VERBS_DL
 src_libfabric_la_SOURCES += $(_verbs_files)
+src_libfabric_la_CPPFLAGS += $(verbs_ibverbs_CPPFLAGS)
+src_libfabric_la_LDFLAGS += $(verbs_ibverbs_LDFLAGS)
+src_libfabric_la_LIBADD += $(verbs_rdmacm_LIBS) $(verbs_ibverbs_LIBS)
 endif !HAVE_VERBS_DL
 
 endif HAVE_VERBS
@@ -191,8 +214,8 @@ _usnic_files = \
 	prov/usnic/src/usdf_timer.h
 
 _usnic_cppflags = \
-        -D__LIBUSNIC__ \
-        -DHAVE_LIBNL3=$(HAVE_LIBNL3) $(USNIC_LIBNL_CPPFLAGS) \
+        -D__LIBUSNIC__ -DWANT_DEBUG_MSGS=0 \
+        -DHAVE_LIBNL3=$(HAVE_LIBNL3) $(usnic_nl_CPPFLAGS) \
         -I$(top_srcdir)/prov/usnic/src/usnic_direct
 
 rdmainclude_HEADERS += \
@@ -202,12 +225,16 @@ if HAVE_USNIC_DL
 pkglib_LTLIBRARIES += libusnic-fi.la
 libusnic_fi_la_CPPFLAGS = $(AM_CPPFLAGS) $(_usnic_cppflags)
 libusnic_fi_la_SOURCES = $(_usnic_files) $(common_srcs)
-libusnic_fi_la_LIBADD = $(linkback)
-libusnic_fi_la_LDFLAGS = -module -avoid-version -shared -export-dynamic
+libusnic_fi_la_LDFLAGS = \
+        $(usnic_ln_LDFLAGS) \
+        -module -avoid-version -shared -export-dynamic
+libusnic_fi_la_LIBADD = $(linkback) $(usnic_nl_LIBS)
 libusnic_fi_la_DEPENDENCIES = $(linkback)
 else !HAVE_USNIC_DL
-AM_CPPFLAGS += $(_usnic_cppflags)
 src_libfabric_la_SOURCES += $(_usnic_files)
+src_libfabric_la_CPPFLAGS += $(_usnic_cppflags)
+src_libfabric_la_LDFLAGS += $(usnic_nl_LDFLAGS)
+src_libfabric_la_LIBADD += $(usnic_nl_LIBS)
 endif !HAVE_USNIC_DL
 
 endif HAVE_USNIC
@@ -238,16 +265,21 @@ _psm_files = \
 if HAVE_PSM_DL
 pkglib_LTLIBRARIES += libpsmx-fi.la
 libpsmx_fi_la_SOURCES = $(_psm_files) $(common_srcs)
-libpsmx_fi_la_LIBADD = $(linkback)
-libpsmx_fi_la_LDFLAGS = -module -avoid-version -shared -export-dynamic
+libpsmx_fi_la_CPPFLAGS = $(AM_CPPFLAGS) $(psm_CPPFLAGS)
+libpsmx_fi_la_LDFLAGS = \
+    -module -avoid-version -shared -export-dynamic $(psm_LDFLAGS)
+libpsmx_fi_la_LIBADD = $(linkback) $(psm_LIBS)
 libpsmx_fi_la_DEPENDENCIES = $(linkback)
 else !HAVE_PSM_DL
 src_libfabric_la_SOURCES += $(_psm_files)
+src_libfabric_la_CPPFLAGS += $(psm_CPPFLAGS)
+src_libfabric_la_LDFLAGS += $(psm_LDFLAGS)
+src_libfabric_la_LIBADD += $(psm_LIBS)
 endif !HAVE_PSM_DL
 
 endif HAVE_PSM
 
-src_libfabric_la_LDFLAGS = -version-info 1 -export-dynamic \
+src_libfabric_la_LDFLAGS += -version-info 1 -export-dynamic \
 			   $(libfabric_version_script)
 src_libfabric_la_DEPENDENCIES = $(srcdir)/libfabric.map
 
@@ -257,6 +289,7 @@ rdmainclude_HEADERS += \
 	$(top_srcdir)/include/rdma/fi_cm.h \
 	$(top_srcdir)/include/rdma/fi_domain.h \
 	$(top_srcdir)/include/rdma/fi_eq.h \
+	$(top_srcdir)/include/rdma/fi_log.h \
 	$(top_srcdir)/include/rdma/fi_prov.h \
 	$(top_srcdir)/include/rdma/fi_rma.h \
 	$(top_srcdir)/include/rdma/fi_endpoint.h \
@@ -279,137 +312,147 @@ nodist_rdmainclude_HEADERS = \
 endif HAVE_DIRECT
 
 real_man_pages = \
-        man/fabric.7 \
-        man/fi_av.3 \
-        man/fi_cm.3 \
-        man/fi_cntr.3 \
-        man/fi_cq.3 \
-        man/fi_direct.7 \
-        man/fi_domain.3 \
-        man/fi_endpoint.3 \
-        man/fi_errno.3 \
-        man/fi_eq.3 \
-        man/fi_fabric.3 \
-        man/fi_getinfo.3 \
-        man/fi_mr.3 \
-        man/fi_msg.3 \
-        man/fi_poll.3 \
-        man/fi_rma.3 \
-        man/fi_tagged.3 \
-        man/fi_trigger.3 \
-        man/fi_version.3
+        man/man3/fi_av.3 \
+        man/man3/fi_cm.3 \
+        man/man3/fi_cntr.3 \
+        man/man3/fi_control.3 \
+        man/man3/fi_cq.3 \
+        man/man3/fi_domain.3 \
+        man/man3/fi_endpoint.3 \
+        man/man3/fi_errno.3 \
+        man/man3/fi_eq.3 \
+        man/man3/fi_fabric.3 \
+        man/man3/fi_getinfo.3 \
+        man/man3/fi_mr.3 \
+        man/man3/fi_msg.3 \
+        man/man3/fi_poll.3 \
+        man/man3/fi_rma.3 \
+        man/man3/fi_tagged.3 \
+        man/man3/fi_trigger.3 \
+        man/man3/fi_version.3 \
+        man/man7/fabric.7 \
+        man/man7/fi_provider.7 \
+        man/man7/fi_psm.7 \
+        man/man7/fi_sockets.7 \
+        man/man7/fi_usnic.7 \
+        man/man7/fi_verbs.7 \
+        man/man7/fi_direct.7
 
 dummy_man_pages = \
-        man/fi_accept.3 \
-        man/fi_alias.3 \
-        man/fi_atomic_valid.3 \
-        man/fi_atomicmsg.3 \
-        man/fi_atomicv.3 \
-        man/fi_av_bind.3 \
-        man/fi_av_insert.3 \
-        man/fi_av_insertsvc.3 \
-        man/fi_av_lookup.3 \
-        man/fi_av_open.3 \
-        man/fi_av_remove.3 \
-        man/fi_av_straddr.3 \
-        man/fi_cancel.3 \
-        man/fi_close.3 \
-        man/fi_cntr_add.3 \
-        man/fi_cntr_open.3 \
-        man/fi_cntr_read.3 \
-        man/fi_cntr_set.3 \
-        man/fi_cntr_wait.3 \
-        man/fi_compare_atomic.3 \
-        man/fi_compare_atomic_valid.3 \
-        man/fi_compare_atomicmsg.3 \
-        man/fi_compare_atomicv.3 \
-        man/fi_connect.3 \
-        man/fi_cq_open.3 \
-        man/fi_cq_read.3 \
-        man/fi_cq_readerr.3 \
-        man/fi_cq_readfrom.3 \
-        man/fi_cq_sread.3 \
-        man/fi_cq_sreadfrom.3 \
-        man/fi_cq_strerror.3 \
-        man/fi_cq_write.3 \
-        man/fi_domain_bind.3 \
-        man/fi_domain_query.3 \
-        man/fi_dupinfo.3 \
-        man/fi_enable.3 \
-        man/fi_ep_bind.3 \
-        man/fi_eq_open.3 \
-        man/fi_eq_read.3 \
-        man/fi_eq_readerr.3 \
-        man/fi_eq_sread.3 \
-        man/fi_eq_strerror.3 \
-        man/fi_eq_write.3 \
-        man/fi_fetch_atomic.3 \
-        man/fi_fetch_atomic_valid.3 \
-        man/fi_fetch_atomicmsg.3 \
-        man/fi_fetch_atomicv.3 \
-        man/fi_freeinfo.3 \
-        man/fi_getname.3 \
-        man/fi_getopt.3 \
-        man/fi_getpeer.3 \
-        man/fi_inject.3 \
-        man/fi_injectdata.3 \
-        man/fi_inject_atomic.3 \
-        man/fi_inject_write.3 \
-        man/fi_inject_writedata.3 \
-        man/fi_join.3 \
-        man/fi_leave.3 \
-        man/fi_listen.3 \
-        man/fi_mr_bind.3 \
-        man/fi_mr_desc.3 \
-        man/fi_mr_key.3 \
-        man/fi_mr_reg.3 \
-        man/fi_mr_regattr.3 \
-        man/fi_mr_regv.3 \
-        man/fi_open.3 \
-        man/fi_passive_ep.3 \
-        man/fi_poll_add.3 \
-        man/fi_poll_del.3 \
-        man/fi_poll_open.3 \
-        man/fi_read.3 \
-        man/fi_readmsg.3 \
-        man/fi_readv.3 \
-        man/fi_recv.3 \
-        man/fi_recvmsg.3 \
-        man/fi_recvv.3 \
-        man/fi_reject.3 \
-        man/fi_rx_addr.3 \
-        man/fi_rx_size_left.3 \
-        man/fi_send.3 \
-        man/fi_senddata.3 \
-        man/fi_sendmsg.3 \
-        man/fi_sendv.3 \
-        man/fi_setopt.3 \
-        man/fi_shutdown.3 \
-        man/fi_strerror.3 \
-        man/fi_tinject.3 \
-        man/fi_tinjectdata.3 \
-        man/fi_tostr.3 \
-        man/fi_trecv.3 \
-        man/fi_trecvmsg.3 \
-        man/fi_trecvv.3 \
-        man/fi_tsearch.3 \
-        man/fi_tsend.3 \
-        man/fi_tsenddata.3 \
-        man/fi_tsendmsg.3 \
-        man/fi_tsendv.3 \
-        man/fi_tx_size_left.3 \
-        man/fi_wait.3 \
-        man/fi_wait_open.3 \
-        man/fi_write.3 \
-        man/fi_writedata.3 \
-        man/fi_writemsg.3 \
-        man/fi_writev.3
+        man/man3/fi_accept.3 \
+        man/man3/fi_alias.3 \
+        man/man3/fi_atomic_valid.3 \
+        man/man3/fi_atomicmsg.3 \
+        man/man3/fi_atomicv.3 \
+        man/man3/fi_av_bind.3 \
+        man/man3/fi_av_insert.3 \
+        man/man3/fi_av_insertsvc.3 \
+        man/man3/fi_av_lookup.3 \
+        man/man3/fi_av_open.3 \
+        man/man3/fi_av_remove.3 \
+        man/man3/fi_av_straddr.3 \
+        man/man3/fi_cancel.3 \
+        man/man3/fi_close.3 \
+        man/man3/fi_cntr_add.3 \
+        man/man3/fi_cntr_open.3 \
+        man/man3/fi_cntr_read.3 \
+        man/man3/fi_cntr_set.3 \
+        man/man3/fi_cntr_wait.3 \
+        man/man3/fi_compare_atomic.3 \
+        man/man3/fi_compare_atomic_valid.3 \
+        man/man3/fi_compare_atomicmsg.3 \
+        man/man3/fi_compare_atomicv.3 \
+        man/man3/fi_connect.3 \
+        man/man3/fi_cq_open.3 \
+        man/man3/fi_cq_read.3 \
+        man/man3/fi_cq_readerr.3 \
+        man/man3/fi_cq_readfrom.3 \
+        man/man3/fi_cq_sread.3 \
+        man/man3/fi_cq_sreadfrom.3 \
+        man/man3/fi_cq_strerror.3 \
+        man/man3/fi_cq_signal.3 \
+        man/man3/fi_domain_bind.3 \
+        man/man3/fi_domain_query.3 \
+        man/man3/fi_dupinfo.3 \
+        man/man3/fi_enable.3 \
+        man/man3/fi_ep_bind.3 \
+        man/man3/fi_eq_open.3 \
+        man/man3/fi_eq_read.3 \
+        man/man3/fi_eq_readerr.3 \
+        man/man3/fi_eq_sread.3 \
+        man/man3/fi_eq_strerror.3 \
+        man/man3/fi_eq_write.3 \
+        man/man3/fi_fetch_atomic.3 \
+        man/man3/fi_fetch_atomic_valid.3 \
+        man/man3/fi_fetch_atomicmsg.3 \
+        man/man3/fi_fetch_atomicv.3 \
+        man/man3/fi_freeinfo.3 \
+        man/man3/fi_getname.3 \
+        man/man3/fi_getopt.3 \
+        man/man3/fi_getpeer.3 \
+        man/man3/fi_inject.3 \
+        man/man3/fi_injectdata.3 \
+        man/man3/fi_inject_atomic.3 \
+        man/man3/fi_inject_write.3 \
+        man/man3/fi_inject_writedata.3 \
+        man/man3/fi_join.3 \
+        man/man3/fi_leave.3 \
+        man/man3/fi_listen.3 \
+        man/man3/fi_mr_bind.3 \
+        man/man3/fi_mr_desc.3 \
+        man/man3/fi_mr_key.3 \
+        man/man3/fi_mr_reg.3 \
+        man/man3/fi_mr_regattr.3 \
+        man/man3/fi_mr_regv.3 \
+        man/man3/fi_open.3 \
+        man/man3/fi_open_ops.3 \
+        man/man3/fi_passive_ep.3 \
+        man/man3/fi_pep_bind.3 \
+        man/man3/fi_poll_add.3 \
+        man/man3/fi_poll_del.3 \
+        man/man3/fi_poll_open.3 \
+        man/man3/fi_read.3 \
+        man/man3/fi_readmsg.3 \
+        man/man3/fi_readv.3 \
+        man/man3/fi_recv.3 \
+        man/man3/fi_recvmsg.3 \
+        man/man3/fi_recvv.3 \
+        man/man3/fi_reject.3 \
+        man/man3/fi_rx_addr.3 \
+        man/man3/fi_rx_size_left.3 \
+        man/man3/fi_scalable_ep_bind.3 \
+        man/man3/fi_send.3 \
+        man/man3/fi_senddata.3 \
+        man/man3/fi_sendmsg.3 \
+        man/man3/fi_sendv.3 \
+        man/man3/fi_setopt.3 \
+        man/man3/fi_shutdown.3 \
+        man/man3/fi_strerror.3 \
+        man/man3/fi_tinject.3 \
+        man/man3/fi_tinjectdata.3 \
+        man/man3/fi_tostr.3 \
+        man/man3/fi_trecv.3 \
+        man/man3/fi_trecvmsg.3 \
+        man/man3/fi_trecvv.3 \
+        man/man3/fi_tsearch.3 \
+        man/man3/fi_tsend.3 \
+        man/man3/fi_tsenddata.3 \
+        man/man3/fi_tsendmsg.3 \
+        man/man3/fi_tsendv.3 \
+        man/man3/fi_tx_size_left.3 \
+        man/man3/fi_wait.3 \
+        man/man3/fi_wait_open.3 \
+        man/man3/fi_write.3 \
+        man/man3/fi_writedata.3 \
+        man/man3/fi_writemsg.3 \
+        man/man3/fi_writev.3
 
 man_MANS = $(real_man_pages) $(dummy_man_pages)
 
 nroff:
 	@for file in $(real_man_pages); do \
-	    config/md2nroff.pl --source=$$file.md; \
+	    source=`echo $$file | sed -e 's@/man[0-9]@@'`; \
+	    config/md2nroff.pl --source=$$source.md; \
 	done
 
 EXTRA_DIST = libfabric.map libfabric.spec.in config/distscript.pl $(man_MANS)

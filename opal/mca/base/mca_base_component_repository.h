@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -16,16 +17,10 @@
  * $HEADER$
  */
 
-#ifndef MCA_BASE_COMPONENT_REPOSITORY_H
-#define MCA_BASE_COMPONENT_REPOSITORY_H
-
-#include "opal_config.h"
-
-BEGIN_C_DECLS
-
-    OPAL_DECLSPEC int mca_base_component_repository_init(void);
-
-/* This file provide the external interface to our base component
+/**
+ * @file mca_base_component_repository.h
+ *
+ * This file provide the external interface to our base component
  * module.  Most of the components that depend on it, will use the
  * retain_component() function to increase the reference count on a
  * particular component (as opposed to the retain() function, which is
@@ -33,48 +28,82 @@ BEGIN_C_DECLS
  * the functions exported from one header file rather than to separate
  * retain_component() and retain() into two separate header files
  * (i.e., have a separate header file just for retain()).
- *
- * Note that internal to opal/mca/base, <ltdl.h> will *always* be
- * included before this file, and <ltdl.h> is not included anywhere
- * else in the OMPI tree.  So checking for the LTDL_H preprocessor
- * macro is a good indicator as to whether this file is being included
- * from an opal/mca/base source file or not.  If we are, then we need
- * already have a real definition of lt_dlhandle.  If we are being
- * included from elsewhere, then <ltdl.h> will not previously have
- * been included, LTDL_H will not be defined, and we need a fake
- * definition of lt_dlhandle (or we'll get compile errors).  So just
- * typedef it to (void*).
- *
- * One more case that this handles is the --disable-dlopen case.  In
- * that case, even in opal/mca/base, we *won't* be including <ltdl.h>.
- * Hence, LTDL_H won't be defined, so we'll end up typedefing
- * lt_dlhandle to (void *).  "But why does that matter?" you ask, "If
- * we configure with --disable-dlopen, then lt_dlhandle shouldn't be
- * used anywhere."  Incorrect, Grasshopper.  A small number of places
- * (like the retain() function) are still prototyped, but have 99% of
- * their innards #if'ed out -- i.e., they just return
- * OPAL_ERR_NOT_SUPPORTED.  Why was it coded up this way?  I'm not
- * entirely sure -- there may be a reason (and that reason may just be
- * conservative coding), but I'm not really too inspired to look into
- * it any further at this point.  :-)
  */
-#if !defined(LTDL_H)
-    typedef void *lt_dlhandle;
-#endif
 
-    OPAL_DECLSPEC int mca_base_component_repository_retain(char *type, 
-                              lt_dlhandle component_handle, 
-                              const mca_base_component_t *component_struct);
+#ifndef MCA_BASE_COMPONENT_REPOSITORY_H
+#define MCA_BASE_COMPONENT_REPOSITORY_H
 
-    OPAL_DECLSPEC int mca_base_component_repository_retain_component(const char *type, 
-                              const char *name);
-    OPAL_DECLSPEC int mca_base_component_repository_link(const char *src_type, 
-                              const char *src_name,
-                              const char *depend_type,
-                              const char *depend_name);
-    OPAL_DECLSPEC void mca_base_component_repository_release(const mca_base_component_t *component);
-    OPAL_DECLSPEC void mca_base_component_repository_finalize(void);
-    
+#include "opal_config.h"
+
+#include "opal/mca/dl/dl.h"
+#include "opal/mca/dl/base/base.h"
+
+BEGIN_C_DECLS
+struct mca_base_component_repository_item_t {
+    opal_list_item_t super;
+
+    char ri_type[MCA_BASE_MAX_TYPE_NAME_LEN + 1];
+    char ri_name[MCA_BASE_MAX_COMPONENT_NAME_LEN + 1];
+
+    char *ri_path;
+    char *ri_base;
+
+    opal_dl_handle_t *ri_dlhandle;
+    const mca_base_component_t *ri_component_struct;
+};
+typedef struct mca_base_component_repository_item_t mca_base_component_repository_item_t;
+
+OBJ_CLASS_DECLARATION(mca_base_component_repository_item_t);
+
+/**
+ * @brief initialize the component repository
+ *
+ * This function must be called before any frameworks are registered or
+ * opened. It is responsible for setting up the repository of dynamically
+ * loaded components. The initial search path is taken from the
+ * mca_base_component_path MCA parameter. mca_base_open () is a
+ * prerequisite call as it registers the mca_base_component_path parameter.
+ */
+OPAL_DECLSPEC int mca_base_component_repository_init(void);
+
+/**
+ * @brief add search path for dynamically loaded components
+ *
+ * @param[in] path        delimited list of search paths to add
+ */
+OPAL_DECLSPEC int mca_base_component_repository_add (const char *path);
+
+
+/**
+ * @brief return the list of components that match a given framework
+ *
+ * @param[in]  framework  framework to match
+ * @param[out] framework_components components that match this framework
+ *
+ * The list returned in {framework_components} is owned by the component
+ * repository and CAN NOT be modified by the caller.
+ */
+OPAL_DECLSPEC int mca_base_component_repository_get_components (mca_base_framework_t *framework,
+                                                                opal_list_t **framework_components);
+
+/**
+ * @brief finalize the mca component repository
+ */
+OPAL_DECLSPEC void mca_base_component_repository_finalize(void);
+
+/**
+ * @brief open the repository item and add it to the framework's component
+ * list
+ *
+ * @param[in] framework   framework that matches the component
+ * @param[in] ri          dynamic component to open
+ */
+int mca_base_component_repository_open (mca_base_framework_t *framework,
+                                        mca_base_component_repository_item_t *ri);
+
+
+void mca_base_component_repository_release(const mca_base_component_t *component);
+
 END_C_DECLS
 
 #endif /* MCA_BASE_COMPONENT_REPOSITORY_H */

@@ -101,8 +101,8 @@ static void fi_tostr_flags(char *buf, uint64_t flags)
 
 	IFFLAGSTR(flags, FI_REMOTE_CQ_DATA);
 	IFFLAGSTR(flags, FI_EVENT);
-	IFFLAGSTR(flags, FI_REMOTE_SIGNAL);
-	IFFLAGSTR(flags, FI_REMOTE_COMPLETE);
+	IFFLAGSTR(flags, FI_INJECT_COMPLETE);
+	IFFLAGSTR(flags, FI_TRANSMIT_COMPLETE);
 	IFFLAGSTR(flags, FI_CANCEL);
 	IFFLAGSTR(flags, FI_MORE);
 	IFFLAGSTR(flags, FI_PEEK);
@@ -156,7 +156,6 @@ static void fi_tostr_threading(char *buf, enum fi_threading threading)
 	}
 }
 
-
 static void fi_tostr_order(char *buf, uint64_t flags)
 {
 	IFFLAGSTR(flags, FI_ORDER_RAR);
@@ -179,7 +178,6 @@ static void fi_tostr_caps(char *buf, uint64_t caps)
 	IFFLAGSTR(caps, FI_TAGGED);
 	IFFLAGSTR(caps, FI_ATOMICS);
 	IFFLAGSTR(caps, FI_DYNAMIC_MR);
-	IFFLAGSTR(caps, FI_BUFFERED_RECV);
 	fi_tostr_flags(buf, caps);
 
 	fi_remove_comma(buf);
@@ -222,6 +220,7 @@ static void fi_tostr_mode(char *buf, uint64_t mode)
 	IFFLAGSTR(mode, FI_LOCAL_MR);
 	IFFLAGSTR(mode, FI_PROV_MR_ATTR);
 	IFFLAGSTR(mode, FI_MSG_PREFIX);
+	IFFLAGSTR(mode, FI_RX_CQ_DATA);
 
 	fi_remove_comma(buf);
 }
@@ -326,23 +325,44 @@ static void fi_tostr_ep_attr(char *buf, const struct fi_ep_attr *attr, const cha
 	}
 
 	strcatf(buf, "%sfi_ep_attr:\n", prefix);
+	strcatf(buf, "%sep_type: ", TAB);
+	fi_tostr_ep_type(buf, attr->type);
+	strcatf(buf, "\n");
 	strcatf(buf, "%s%sprotocol: ", prefix, TAB);
 	fi_tostr_protocol(buf, attr->protocol);
 	strcatf(buf, "\n");
 	strcatf(buf, "%s%smax_msg_size: %zd\n", prefix, TAB, attr->max_msg_size);
-	strcatf(buf, "%s%sinject_size: %zd\n", prefix, TAB, attr->inject_size);
-	strcatf(buf, "%s%stotal_buffered_recv: %zd\n", prefix, TAB, attr->total_buffered_recv);
 	strcatf(buf, "%s%smax_order_raw_size: %zd\n", prefix, TAB, attr->max_order_raw_size);
 	strcatf(buf, "%s%smax_order_war_size: %zd\n", prefix, TAB, attr->max_order_war_size);
 	strcatf(buf, "%s%smax_order_waw_size: %zd\n", prefix, TAB, attr->max_order_waw_size);
 	strcatf(buf, "%s%smem_tag_format: 0x%016llx\n", prefix, TAB, attr->mem_tag_format);
 
-	strcatf(buf, "%s%smsg_order: [ ", prefix, TAB);
-	fi_tostr_order(buf, attr->msg_order);
-	strcatf(buf, " ]\n");
-
 	strcatf(buf, "%s%stx_ctx_cnt: %zd\n", prefix, TAB, attr->tx_ctx_cnt);
 	strcatf(buf, "%s%srx_ctx_cnt: %zd\n", prefix, TAB, attr->rx_ctx_cnt);
+}
+
+static void fi_tostr_resource_mgmt(char *buf, enum fi_resource_mgmt rm)
+{
+	switch (rm) {
+	CASEENUMSTR(FI_RM_UNSPEC);
+	CASEENUMSTR(FI_RM_DISABLED);
+	CASEENUMSTR(FI_RM_ENABLED);
+	default:
+		strcatf(buf, "Unknown");
+		break;
+	}
+}
+
+static void fi_tostr_av_type(char *buf, enum fi_av_type type)
+{
+	switch (type) {
+	CASEENUMSTR(FI_AV_UNSPEC);
+	CASEENUMSTR(FI_AV_MAP);
+	CASEENUMSTR(FI_AV_TABLE);
+	default:
+		strcatf(buf, "Unknown");
+		break;
+	}
 }
 
 static void fi_tostr_domain_attr(char *buf, const struct fi_domain_attr *attr,
@@ -364,6 +384,12 @@ static void fi_tostr_domain_attr(char *buf, const struct fi_domain_attr *attr,
 	strcatf(buf, "\n");
 	strcatf(buf, "%s%sdata_progress: ", prefix, TAB);
 	fi_tostr_progress(buf, attr->data_progress);
+	strcatf(buf, "\n");
+	strcatf(buf, "%s%sresouce_mgmt: ", prefix, TAB);
+	fi_tostr_resource_mgmt(buf, attr->resource_mgmt);
+	strcatf(buf, "\n");
+	strcatf(buf, "%s%sav_type: ", prefix, TAB);
+	fi_tostr_av_type(buf, attr->av_type);
 	strcatf(buf, "\n");
 
 	strcatf(buf, "%s%smr_key_size: %zd\n", prefix, TAB, attr->mr_key_size);
@@ -401,9 +427,6 @@ static void fi_tostr_info(char *buf, const struct fi_info *info)
 	fi_tostr_mode(buf, info->mode);
 	strcatf(buf, " ]\n");
 
-	strcatf(buf, "%sep_type: ", TAB);
-	fi_tostr_ep_type(buf, info->ep_type);
-	strcatf(buf, "\n");
 	strcatf(buf, "%sfi_addr_format: ", TAB);
 	fi_tostr_addr_format(buf, info->addr_format);
 	strcatf(buf, "\n");
@@ -423,17 +446,6 @@ static void fi_tostr_info(char *buf, const struct fi_info *info)
 	fi_tostr_ep_attr(buf, info->ep_attr, TAB);
 	fi_tostr_domain_attr(buf, info->domain_attr, TAB);
 	fi_tostr_fabric_attr(buf, info->fabric_attr, TAB);
-}
-
-static void fi_tostr_av_type(char *buf, enum fi_av_type type)
-{
-	switch (type) {
-	CASEENUMSTR(FI_AV_MAP);
-	CASEENUMSTR(FI_AV_TABLE);
-	default:
-		strcatf(buf, "Unknown");
-		break;
-	}
 }
 
 static void fi_tostr_atomic_type(char *buf, enum fi_datatype type)
@@ -492,16 +504,52 @@ static void fi_tostr_version(char *buf)
 	strcatf(buf, VERSION);
 }
 
+static void fi_tostr_eq_event(char *buf, int type)
+{
+	switch (type) {
+	CASEENUMSTR(FI_NOTIFY);
+	CASEENUMSTR(FI_CONNREQ);
+	CASEENUMSTR(FI_CONNECTED);
+	CASEENUMSTR(FI_SHUTDOWN);
+	CASEENUMSTR(FI_MR_COMPLETE);
+	CASEENUMSTR(FI_AV_COMPLETE);
+	default:
+		strcatf(buf, "Unknown");
+		break;
+	}
+}
+
+static void fi_tostr_cq_event_flags(char *buf, uint64_t flags)
+{
+	IFFLAGSTR(flags, FI_SEND);
+	IFFLAGSTR(flags, FI_RECV);
+	IFFLAGSTR(flags, FI_RMA);
+	IFFLAGSTR(flags, FI_ATOMIC);
+	IFFLAGSTR(flags, FI_MSG);
+	IFFLAGSTR(flags, FI_TAGGED);
+	IFFLAGSTR(flags, FI_READ);
+	IFFLAGSTR(flags, FI_WRITE);
+	IFFLAGSTR(flags, FI_REMOTE_READ);
+	IFFLAGSTR(flags, FI_REMOTE_WRITE);
+	IFFLAGSTR(flags, FI_REMOTE_CQ_DATA);
+	IFFLAGSTR(flags, FI_MULTI_RECV);
+	fi_remove_comma(buf);
+}
+
 __attribute__((visibility ("default")))
-char *fi_tostr_(const void *data, enum fi_type datatype)
+char *DEFAULT_SYMVER_PRE(fi_tostr)(const void *data, enum fi_type datatype)
 {
 	static char *buf = NULL;
-	uint64_t val64 = *(const uint64_t *) data;
-	uint32_t val32 = *(const uint32_t *) data;
-	int enumval = *(const int *) data;
+	uint64_t val64;
+	uint32_t val32;
+	int enumval;
 
 	if (!data)
 		return NULL;
+
+	val64 = *(const uint64_t *) data;
+	val32 = *(const uint32_t *) data;
+	enumval = *(const int *) data;
 
 	if (!buf) {
 		buf = calloc(BUFSIZ, 1);
@@ -568,13 +616,19 @@ char *fi_tostr_(const void *data, enum fi_type datatype)
 	case FI_TYPE_VERSION:
 		fi_tostr_version(buf);
 		break;
+	case FI_TYPE_EQ_EVENT:
+		fi_tostr_eq_event(buf, enumval);
+		break;
+	case FI_TYPE_CQ_EVENT_FLAGS:
+		fi_tostr_cq_event_flags(buf, val64);
+		break;
 	default:
 		strcatf(buf, "Unknown type");
 		break;
 	}
 	return buf;
 }
-default_symver(fi_tostr_, fi_tostr);
+DEFAULT_SYMVER(fi_tostr_, fi_tostr);
 
 #undef CASEENUMSTR
 #undef IFFLAGSTR

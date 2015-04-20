@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2009-2012 Oak Ridge National Laboratory.  All rights reserved.
  * Copyright (c) 2009-2012 Mellanox Technologies.  All rights reserved.
- * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2013-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
  *
@@ -16,7 +16,7 @@
 
 #include "ompi_config.h"
 #include "opal/class/opal_list.h"
-#include "opal/mca/mca.h"
+#include "ompi/mca/mca.h"
 #include "ompi/mca/coll/coll.h"
 #include "opal/mca/mpool/mpool.h"
 #include "ompi/mca/sbgp/sbgp.h"
@@ -186,8 +186,7 @@ typedef int (*mca_bcol_barrier_init_fn_t)(struct mca_bcol_base_module_t *bcol_mo
  * Macro for use in modules that are of type btl v2.0.0
  */
 #define MCA_BCOL_BASE_VERSION_2_0_0 \
-    MCA_BASE_VERSION_2_0_0, \
-      "bcol", 2, 0, 0
+    OMPI_MCA_BASE_VERSION_2_1_0("bcol", 2, 0, 0)
 
 
 /* This is really an abstarction violation, but is the easiest way to get
@@ -767,7 +766,7 @@ typedef struct mca_bcol_base_function_t mca_bcol_base_function_t;
 
 
 struct mca_bcol_base_descriptor_t {
-    ompi_free_list_item_t super;
+    opal_free_list_item_t super;
 /* Vasily: will be described in the future */
 };
 typedef struct mca_bcol_base_descriptor_t mca_bcol_base_descriptor_t;

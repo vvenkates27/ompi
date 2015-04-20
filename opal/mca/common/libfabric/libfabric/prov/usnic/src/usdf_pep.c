@@ -65,7 +65,7 @@
 #include "usdf_cm.h"
 #include "usdf_msg.h"
 
-int
+static int
 usdf_pep_bind(fid_t fid, fid_t bfid, uint64_t flags)
 {
 	struct usdf_pep *pep;
@@ -115,14 +115,14 @@ usdf_pep_conn_info(struct usdf_connreq *crp)
 
 	/* no domains yet, make an info suitable for creating one */
 	} else {
-		ip = fi_allocinfo_internal();
+		ip = fi_allocinfo();
 		if (ip == NULL) {
 			return NULL;
 		}
 
 		ip->caps = USDF_MSG_CAPS;
 		ip->mode = USDF_MSG_SUPP_MODE;
-		ip->ep_type = FI_EP_MSG;
+		ip->ep_attr->type = FI_EP_MSG;
 
 		ip->addr_format = FI_SOCKADDR_IN;
 		ip->src_addrlen = sizeof(struct sockaddr_in);
@@ -149,11 +149,15 @@ usdf_pep_conn_info(struct usdf_connreq *crp)
 	/* fill in dest addr */
 	ip->dest_addrlen = ip->src_addrlen;
 	sin = calloc(1, ip->dest_addrlen);
+	if (sin == NULL) {
+		goto fail;
+	}
 	sin->sin_family = AF_INET;
 	sin->sin_addr.s_addr = reqp->creq_ipaddr;
 	sin->sin_port = reqp->creq_port;
 
-	ip->connreq = crp;
+	ip->dest_addr = sin;
+	ip->connreq = (fi_connreq_t)crp;
 	return ip;
 fail:
 	fi_freeinfo(ip);
@@ -309,7 +313,7 @@ usdf_pep_listen_cb(void *v)
 	return 0;
 }
 
-int
+static int
 usdf_pep_listen(struct fid_pep *fpep)
 {
 	struct usdf_pep *pep;
@@ -322,7 +326,7 @@ usdf_pep_listen(struct fid_pep *fpep)
 
 	ret = listen(pep->pep_sock, pep->pep_backlog);
 	if (ret != 0) {
-		ret = -errno;
+		return -errno;
 	}
 
 	pep->pep_pollitem.pi_rtn = usdf_pep_listen_cb;
@@ -334,20 +338,20 @@ usdf_pep_listen(struct fid_pep *fpep)
 		return -errno;
 	}
 
-	return ret;
+	return 0;
 }
 
-ssize_t
+static ssize_t
 usdf_pep_cancel(fid_t fid, void *context)
 {
 	return -FI_EINVAL;
 }
 
-int
+static int
 usdf_pep_reject(struct fid_pep *pep, fi_connreq_t connreq,
 		const void *param, size_t paramlen)
 {
-	return 0;
+	return -FI_ENOSYS;
 }
 
 static void
@@ -389,7 +393,7 @@ usdf_pep_grow_backlog(struct usdf_pep *pep)
 	return 0;
 }
 
-int
+static int
 usdf_pep_close(fid_t fid)
 {
 	struct usdf_pep *pep;
@@ -401,7 +405,7 @@ usdf_pep_close(fid_t fid)
 
 	usdf_pep_free_cr_lists(pep);
 	close(pep->pep_sock);
-	if (&pep->pep_eq != NULL) {
+	if (pep->pep_eq != NULL) {
 		atomic_dec(&pep->pep_eq->eq_refcnt);
 	}
 	atomic_dec(&pep->pep_fabric->fab_refcnt);
@@ -420,12 +424,13 @@ struct fi_ops usdf_pep_ops = {
 
 static struct fi_ops_ep usdf_pep_base_ops = {
 	.size = sizeof(struct fi_ops_ep),
-	.enable = fi_no_enable,
 	.cancel = usdf_pep_cancel,
 	.getopt = fi_no_getopt,
 	.setopt = fi_no_setopt,
 	.tx_ctx = fi_no_tx_ctx,
 	.rx_ctx = fi_no_rx_ctx,
+	.rx_size_left = fi_no_rx_size_left,
+	.tx_size_left = fi_no_tx_size_left,
 };
 
 static struct fi_ops_cm usdf_pep_cm_ops = {
@@ -448,7 +453,7 @@ usdf_pep_open(struct fid_fabric *fabric, struct fi_info *info,
 	int ret;
 	int optval;
 
-	if (info->ep_type != FI_EP_MSG) {
+	if (info->ep_attr->type != FI_EP_MSG) {
 		return -FI_ENODEV;
 	}
 

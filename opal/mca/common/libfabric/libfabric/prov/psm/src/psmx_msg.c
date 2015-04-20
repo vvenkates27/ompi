@@ -42,7 +42,6 @@ ssize_t _psmx_recv(struct fid_ep *ep, void *buf, size_t len,
 	psm_mq_req_t psm_req;
 	uint64_t psm_tag, psm_tagsel;
 	struct fi_context *fi_context;
-	int user_fi_context = 0;
 	int err;
 	int recv_flag = 0;
 	size_t idx;
@@ -55,7 +54,7 @@ ssize_t _psmx_recv(struct fid_ep *ep, void *buf, size_t len,
 
 		trigger = calloc(1, sizeof(*trigger));
 		if (!trigger)
-			return -ENOMEM;
+			return -FI_ENOMEM;
 
 		trigger->op = PSMX_TRIGGERED_RECV;
 		trigger->cntr = container_of(ctxt->trigger.threshold.cntr,
@@ -73,12 +72,12 @@ ssize_t _psmx_recv(struct fid_ep *ep, void *buf, size_t len,
 		return 0;
 	}
 
-	if (src_addr) {
+	if ((ep_priv->caps & FI_DIRECTED_RECV) && src_addr != FI_ADDR_UNSPEC) {
 		av = ep_priv->av;
 		if (av && av->type == FI_AV_TABLE) {
 			idx = (size_t)src_addr;
 			if (idx >= av->last)
-				return -EINVAL;
+				return -FI_EINVAL;
 
 			src_addr = (fi_addr_t)av->psm_epaddrs[idx];
 		}
@@ -91,21 +90,20 @@ ssize_t _psmx_recv(struct fid_ep *ep, void *buf, size_t len,
 		psm_tagsel = PSMX_MSG_BIT;
 	}
 
-	if (ep_priv->recv_cq_event_flag && !(flags & FI_EVENT) && !context) {
+	if (ep_priv->recv_cq_event_flag && !(flags & FI_COMPLETION) && !context) {
 		fi_context = &ep_priv->nocomp_recv_context;
 	}
 	else {
 		if (!context)
-			return -EINVAL;
+			return -FI_EINVAL;
 
 		fi_context = context;
-		user_fi_context = 1;
 		if (flags & FI_MULTI_RECV) {
 			struct psmx_multi_recv *req;
 
 			req = calloc(1, sizeof(*req));
 			if (!req)
-				return -ENOMEM;
+				return -FI_ENOMEM;
 
 			req->tag = psm_tag;
 			req->tagsel = psm_tagsel;
@@ -131,7 +129,7 @@ ssize_t _psmx_recv(struct fid_ep *ep, void *buf, size_t len,
 	if (err != PSM_OK)
 		return psmx_errno(err);
 
-	if (user_fi_context)
+	if (fi_context == context)
 		PSMX_CTXT_REQ(fi_context) = psm_req;
 
 	return 0;
@@ -153,7 +151,7 @@ static ssize_t psmx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg, uint64_
 	size_t len;
 
 	if (!msg || msg->iov_count > 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	if (msg->iov_count) {
 		buf = msg->msg_iov[0].iov_base;
@@ -176,7 +174,7 @@ static ssize_t psmx_recvv(struct fid_ep *ep, const struct iovec *iov, void **des
 	size_t len;
 
 	if (!iov || count > 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	if (count) {
 		buf = iov[0].iov_base;
@@ -201,9 +199,10 @@ ssize_t _psmx_send(struct fid_ep *ep, const void *buf, size_t len,
 	psm_mq_req_t psm_req;
 	uint64_t psm_tag;
 	struct fi_context * fi_context;
-	int user_fi_context = 0;
 	int err;
 	size_t idx;
+	int no_completion = 0;
+	struct psmx_cq_event *event;
 
 	ep_priv = container_of(ep, struct psmx_fid_ep, ep);
 
@@ -213,7 +212,7 @@ ssize_t _psmx_send(struct fid_ep *ep, const void *buf, size_t len,
 
 		trigger = calloc(1, sizeof(*trigger));
 		if (!trigger)
-			return -ENOMEM;
+			return -FI_ENOMEM;
 
 		trigger->op = PSMX_TRIGGERED_SEND;
 		trigger->cntr = container_of(ctxt->trigger.threshold.cntr,
@@ -235,7 +234,7 @@ ssize_t _psmx_send(struct fid_ep *ep, const void *buf, size_t len,
 	if (av && av->type == FI_AV_TABLE) {
 		idx = (size_t)dest_addr;
 		if (idx >= av->last)
-			return -EINVAL;
+			return -FI_EINVAL;
 
 		psm_epaddr = av->psm_epaddrs[idx];
 	}
@@ -245,31 +244,51 @@ ssize_t _psmx_send(struct fid_ep *ep, const void *buf, size_t len,
 
 	psm_tag = ep_priv->domain->psm_epid | PSMX_MSG_BIT;
 
+	if ((flags & PSMX_NO_COMPLETION) ||
+	    (ep_priv->send_cq_event_flag && !(flags & FI_COMPLETION)))
+		no_completion = 1;
+
 	if (flags & FI_INJECT) {
-		fi_context = malloc(sizeof(*fi_context) + len);
-		if (!fi_context)
-			return -ENOMEM;
+		if (len > PSMX_INJECT_SIZE)
+			return -FI_EMSGSIZE;
 
-		memcpy((void *)fi_context + sizeof(*fi_context), buf, len);
-		buf = (void *)fi_context + sizeof(*fi_context);
+		err = psm_mq_send(ep_priv->domain->psm_mq, psm_epaddr, send_flag,
+				  psm_tag, buf, len);
 
-		PSMX_CTXT_TYPE(fi_context) = PSMX_INJECT_CONTEXT;
-		PSMX_CTXT_EP(fi_context) = ep_priv;
+		if (err != PSM_OK)
+			return psmx_errno(err);
+
+		if (ep_priv->send_cntr)
+			psmx_cntr_inc(ep_priv->send_cntr);
+
+		if (ep_priv->send_cq && !no_completion) {
+			event = psmx_cq_create_event(
+					ep_priv->send_cq,
+					context, (void *)buf, flags, len,
+					0 /* data */, psm_tag,
+					0 /* olen */,
+					0 /* err */);
+
+			if (event)
+				psmx_cq_enqueue_event(ep_priv->send_cq, event);
+			else
+				return -FI_ENOMEM;
+		}
+
+		return 0;
 	}
-	else if (ep_priv->send_cq_event_flag && !(flags & FI_EVENT) && !context) {
+
+	if (no_completion && !context) {
 		fi_context = &ep_priv->nocomp_send_context;
 	}
 	else {
 		if (!context)
-			return -EINVAL;
+			return -FI_EINVAL;
 
 		fi_context = context;
-		if (fi_context != &ep_priv->sendimm_context) {
-			user_fi_context = 1;
-			PSMX_CTXT_TYPE(fi_context) = PSMX_SEND_CONTEXT;
-			PSMX_CTXT_USER(fi_context) = (void *)buf;
-			PSMX_CTXT_EP(fi_context) = ep_priv;
-		}
+		PSMX_CTXT_TYPE(fi_context) = PSMX_SEND_CONTEXT;
+		PSMX_CTXT_USER(fi_context) = (void *)buf;
+		PSMX_CTXT_EP(fi_context) = ep_priv;
 	}
 
 	err = psm_mq_isend(ep_priv->domain->psm_mq, psm_epaddr, send_flag,
@@ -278,7 +297,7 @@ ssize_t _psmx_send(struct fid_ep *ep, const void *buf, size_t len,
 	if (err != PSM_OK)
 		return psmx_errno(err);
 
-	if (user_fi_context)
+	if (fi_context == context)
 		PSMX_CTXT_REQ(fi_context) = psm_req;
 
 	return 0;
@@ -300,7 +319,7 @@ static ssize_t psmx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg, uint64_
 	size_t len;
 
 	if (!msg || msg->iov_count > 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	if (msg->iov_count) {
 		buf = msg->msg_iov[0].iov_base;
@@ -323,7 +342,7 @@ static ssize_t psmx_sendv(struct fid_ep *ep, const struct iovec *iov, void **des
 	size_t len;
 
 	if (!iov || count > 1)
-		return -EINVAL;
+		return -FI_EINVAL;
 
 	if (count) {
 		buf = iov[0].iov_base;
@@ -345,7 +364,7 @@ static ssize_t psmx_inject(struct fid_ep *ep, const void *buf, size_t len,
 	ep_priv = container_of(ep, struct psmx_fid_ep, ep);
 
 	return _psmx_send(ep, buf, len, NULL, dest_addr, NULL,
-			  ep_priv->flags | FI_INJECT);
+			  ep_priv->flags | FI_INJECT | PSMX_NO_COMPLETION);
 }
 
 struct fi_ops_msg psmx_msg_ops = {

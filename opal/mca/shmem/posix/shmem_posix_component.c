@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -9,8 +10,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2011 Los Alamos National Security, LLC.
+ * Copyright (c) 2007-2015 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -70,38 +71,26 @@ static bool rt_successful = false;
  * and pointers to our public functions in it
  */
 opal_shmem_posix_component_t mca_shmem_posix_component = {
-    /* ////////////////////////////////////////////////////////////////////// */
-    /* super */
-    /* ////////////////////////////////////////////////////////////////////// */
-    {
-        /* common MCA component data */
-        {
+    .super = {
+        .base_version = {
             OPAL_SHMEM_BASE_VERSION_2_0_0,
 
             /* component name and version */
-            "posix",
-            OPAL_MAJOR_VERSION,
-            OPAL_MINOR_VERSION,
-            OPAL_RELEASE_VERSION,
+            .mca_component_name = "posix",
+            MCA_BASE_MAKE_VERSION(component, OPAL_MAJOR_VERSION, OPAL_MINOR_VERSION,
+                                  OPAL_RELEASE_VERSION),
 
-            /* component open */
-            posix_open,
-            /* component close */
-            NULL,
-            /* component query */
-            posix_query,
-            posix_register
+            .mca_open_component = posix_open,
+            .mca_query_component = posix_query,
+            .mca_register_component_params = posix_register
         },
         /* MCA v2.0.0 component meta data */
-        {
+        .base_data = {
             /* the component is checkpoint ready */
             MCA_BASE_METADATA_PARAM_CHECKPOINT
         },
-        posix_runtime_query,
+        .runtime_query = posix_runtime_query,
     },
-    /* ////////////////////////////////////////////////////////////////////// */
-    /* posix component-specific information */
-    /* see: shmem_posix.h for more information */
 };
 
 

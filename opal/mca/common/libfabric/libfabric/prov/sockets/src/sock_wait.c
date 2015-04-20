@@ -41,6 +41,9 @@
 #include "sock.h"
 #include "sock_util.h"
 
+#define SOCK_LOG_INFO(...) _SOCK_LOG_INFO(FI_LOG_CORE, __VA_ARGS__)
+#define SOCK_LOG_ERROR(...) _SOCK_LOG_ERROR(FI_LOG_CORE, __VA_ARGS__)
+
 enum {
 	WAIT_READ_FD = 0,
 	WAIT_WRITE_FD,
@@ -74,7 +77,8 @@ int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 
 static int sock_wait_init(struct sock_wait *wait, enum fi_wait_obj type)
 {
-	long flags = 0;
+	int ret;
+
 	wait->type = type;
 	
 	switch (type) {
@@ -82,11 +86,11 @@ static int sock_wait_init(struct sock_wait *wait, enum fi_wait_obj type)
 		if (socketpair(AF_UNIX, SOCK_STREAM, 0, wait->wobj.fd))
 			return -errno;
 		
-		fcntl(wait->wobj.fd[WAIT_READ_FD], F_GETFL, &flags);
-		if (fcntl(wait->wobj.fd[WAIT_READ_FD], F_SETFL, flags | O_NONBLOCK)) {
+		ret = fd_set_nonblock(wait->wobj.fd[WAIT_READ_FD]);
+		if (ret) {
 			close(wait->wobj.fd[WAIT_READ_FD]);
 			close(wait->wobj.fd[WAIT_WRITE_FD]);
-			return -errno;
+			return ret;
 		}
 		break;
 		
@@ -170,12 +174,15 @@ void sock_wait_signal(struct fid_wait *wait_fid)
 {
 	struct sock_wait *wait;
 	static char c = 'a';
+	int ret;
 
 	wait = container_of(wait_fid, struct sock_wait, wait_fid);
 
 	switch (wait->type) {
 	case FI_WAIT_FD:
-		write(wait->wobj.fd[WAIT_WRITE_FD], &c, 1);
+		ret = write(wait->wobj.fd[WAIT_WRITE_FD], &c, 1);
+		if (ret != 1)
+			SOCK_LOG_ERROR("failed to signal\n");
 		break;
 		
 	case FI_WAIT_MUTEX_COND:
@@ -273,6 +280,8 @@ int sock_wait_open(struct fid_fabric *fabric, struct fi_wait_attr *attr,
 	fab = container_of(fabric, struct sock_fabric, fab_fid);
 	if (!attr || attr->wait_obj == FI_WAIT_UNSPEC)
 		wait_obj_type = FI_WAIT_FD;
+	else 
+		wait_obj_type = attr->wait_obj;
 	
 	wait = calloc(1, sizeof(*wait));
 	if (!wait)

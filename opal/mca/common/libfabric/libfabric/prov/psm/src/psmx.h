@@ -9,6 +9,7 @@ extern "C" {
 #include <config.h>
 #endif
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -34,27 +35,39 @@ extern "C" {
 #include <psm.h>
 #include <psm_mq.h>
 #include "psm_am.h"
+
 #include "fi.h"
 #include "fi_enosys.h"
 #include "fi_list.h"
+#include <rdma/fi_log.h>
 
-#define PSM_PFX "libfabric:psm"
+#define PSMX_PROV_NAME		"psm"
+#define PSMX_PROV_NAME_LEN	3
+#define PSMX_DOMAIN_NAME	"psm"
+#define PSMX_DOMAIN_NAME_LEN	3
+#define PSMX_FABRIC_NAME	"psm"
+#define PSMX_FABRIC_NAME_LEN	3
+
+#define PSMX_DEFAULT_UUID	"0FFF0FFF-0000-0000-0000-0FFF0FFF0FFF"
+
+extern struct fi_provider psmx_prov;
 
 #define PSMX_TIME_OUT	120
 
-#define PSMX_OP_FLAGS	(FI_INJECT | FI_MULTI_RECV | FI_EVENT | \
-			 FI_TRIGGER | FI_REMOTE_SIGNAL | FI_REMOTE_COMPLETE)
+#define PSMX_OP_FLAGS	(FI_INJECT | FI_MULTI_RECV | FI_COMPLETION | \
+			 FI_TRIGGER | FI_INJECT_COMPLETE | FI_COMMIT_COMPLETE)
 
 #define PSMX_CAP_EXT	(0)
 
-#define PSMX_CAPS	(FI_TAGGED | FI_MSG | FI_ATOMICS | FI_INJECT | \
-			 FI_RMA | FI_BUFFERED_RECV | FI_MULTI_RECV | \
+#define PSMX_CAPS	(FI_TAGGED | FI_MSG | FI_ATOMICS | \
+			 FI_RMA | FI_MULTI_RECV | \
                          FI_READ | FI_WRITE | FI_SEND | FI_RECV | \
                          FI_REMOTE_READ | FI_REMOTE_WRITE | \
-                         FI_REMOTE_COMPLETE | FI_REMOTE_SIGNAL | \
 			 FI_CANCEL | FI_TRIGGER | \
 			 FI_DYNAMIC_MR | \
 			 PSMX_CAP_EXT)
+
+#define PSMX_CAPS2	((PSMX_CAPS | FI_DIRECTED_RECV) & ~FI_TAGGED)
 
 #define PSMX_MODE	(FI_CONTEXT)
 
@@ -64,6 +77,9 @@ extern "C" {
 #define PSMX_MSG_BIT	(0x1ULL << 63)
 #define PSMX_RMA_BIT	(0x1ULL << 62)
 
+/* Bits 60 .. 63 of the flag are provider specific */
+#define PSMX_NO_COMPLETION	(1ULL << 60)
+
 enum psmx_context_type {
 	PSMX_NOCOMP_SEND_CONTEXT = 1,
 	PSMX_NOCOMP_RECV_CONTEXT,
@@ -72,16 +88,21 @@ enum psmx_context_type {
 	PSMX_SEND_CONTEXT,
 	PSMX_RECV_CONTEXT,
 	PSMX_MULTI_RECV_CONTEXT,
+	PSMX_TSEND_CONTEXT,
+	PSMX_TRECV_CONTEXT,
 	PSMX_WRITE_CONTEXT,
 	PSMX_READ_CONTEXT,
-	PSMX_INJECT_CONTEXT,
-	PSMX_INJECT_WRITE_CONTEXT,
 	PSMX_REMOTE_WRITE_CONTEXT,
 	PSMX_REMOTE_READ_CONTEXT,
 };
 
+union psmx_pi {
+	void	*p;
+	int	i;
+};
+
 #define PSMX_CTXT_REQ(fi_context)	((fi_context)->internal[0])
-#define PSMX_CTXT_TYPE(fi_context)	(*(int *)&(fi_context)->internal[1])
+#define PSMX_CTXT_TYPE(fi_context)	(((union psmx_pi *)&(fi_context)->internal[1])->i)
 #define PSMX_CTXT_USER(fi_context)	((fi_context)->internal[2])
 #define PSMX_CTXT_EP(fi_context)	((fi_context)->internal[3])
 
@@ -96,6 +117,7 @@ enum psmx_context_type {
 #define PSMX_AM_FLAG_MASK	0xFFFF0000
 #define PSMX_AM_EOM		0x40000000
 #define PSMX_AM_DATA		0x20000000
+#define PSMX_AM_FORCE_ACK	0x10000000
 
 #ifndef PSMX_AM_USE_SEND_QUEUE
 #define PSMX_AM_USE_SEND_QUEUE	0
@@ -134,6 +156,8 @@ struct psmx_am_request {
 			uint64_t addr;
 			uint64_t key;
 			void	*context;
+			void	*peer_context;
+			void	*peer_addr;
 			uint64_t data;
 		} write;
 		struct {
@@ -170,18 +194,27 @@ struct psmx_am_request {
 			void 	*result;
 		} atomic;
 	};
+	uint64_t cq_flags;
 	struct fi_context fi_context;
 	struct psmx_fid_ep *ep;
-	struct psmx_am_request *next;
 	int state;
 	int no_event;
 	int error;
+	struct slist_entry list_entry;
+};
+
+struct psmx_unexp {
+	psm_epaddr_t		sender_addr;
+	uint64_t		sender_context;
+	uint32_t		len_received;
+	uint32_t		done;
+	struct slist_entry	list_entry;
+	char			buf[0];
 };
 
 struct psmx_req_queue {
-	pthread_mutex_t		lock;
-	struct psmx_am_request	*head;
-	struct psmx_am_request	*tail;
+	pthread_mutex_t	lock;
+	struct slist	list;
 };
 
 struct psmx_multi_recv {
@@ -197,17 +230,18 @@ struct psmx_multi_recv {
 
 struct psmx_fid_fabric {
 	struct fid_fabric	fabric;
+	int			refcnt;
 	struct psmx_fid_domain	*active_domain;
+	psm_uuid_t		uuid;
 };
 
 struct psmx_fid_domain {
 	struct fid_domain	domain;
 	struct psmx_fid_fabric	*fabric;
+	int			refcnt;
 	psm_ep_t		psm_ep;
 	psm_epid_t		psm_epid;
 	psm_mq_t		psm_mq;
-	pthread_t		ns_thread;
-	int			ns_port;
 	struct psmx_fid_ep	*tagged_ep;
 	struct psmx_fid_ep	*msg_ep;
 	struct psmx_fid_ep	*rma_ep;
@@ -464,8 +498,6 @@ struct psmx_fid_ep {
 	uint64_t		caps;
 	struct fi_context	nocomp_send_context;
 	struct fi_context	nocomp_recv_context;
-	struct fi_context	sendimm_context;
-	struct fi_context	writeimm_context;
 	size_t			min_multi_recv;
 };
 
@@ -477,7 +509,6 @@ struct psmx_fid_stx {
 struct psmx_fid_mr {
 	struct fid_mr		mr;
 	struct psmx_fid_domain	*domain;
-	struct psmx_fid_cq	*cq;
 	struct psmx_fid_cntr	*cntr;
 	uint64_t		access;
 	uint64_t		flags;
@@ -495,8 +526,6 @@ struct psmx_env {
 	int name_server;
 	int am_msg;
 	int tagged_rma;
-	int debug;
-	int warning;
 	char *uuid;
 };
 
@@ -517,6 +546,7 @@ extern struct fi_ops_rma	psmx_rma_ops;
 extern struct fi_ops_atomic	psmx_atomic_ops;
 extern struct psm_am_parameters psmx_am_param;
 extern struct psmx_env		psmx_env;
+extern struct psmx_fid_fabric	*psmx_active_fabric;
 
 int	psmx_domain_open(struct fid_fabric *fabric, struct fi_info *info,
 			 struct fid_domain **domain, void *context);
@@ -546,7 +576,6 @@ int	psmx_errno(int err);
 int	psmx_epid_to_epaddr(struct psmx_fid_domain *domain,
 			    psm_epid_t epid, psm_epaddr_t *epaddr);
 void	psmx_query_mpi(void);
-void	psmx_debug(char *fmt, ...);
 
 void	psmx_cq_enqueue_event(struct psmx_fid_cq *cq, struct psmx_cq_event *event);
 struct	psmx_cq_event *psmx_cq_create_event(struct psmx_fid_cq *cq,
@@ -562,17 +591,6 @@ void	psmx_wait_signal(struct fid_wait *wait);
 
 int	psmx_am_init(struct psmx_fid_domain *domain);
 int	psmx_am_fini(struct psmx_fid_domain *domain);
-int	psmx_am_enqueue_recv(struct psmx_fid_domain *domain,
-				struct psmx_am_request *req);
-struct psmx_am_request *
-	psmx_am_search_and_dequeue_recv(struct psmx_fid_domain *domain,
-					const void *src_addr);
-#if PSMX_AM_USE_SEND_QUEUE
-int	psmx_am_enqueue_send(struct psmx_fid_domain *domain,
-				  struct psmx_am_request *req);
-#endif
-int	psmx_am_enqueue_rma(struct psmx_fid_domain *domain,
-				  struct psmx_am_request *req);
 int	psmx_am_progress(struct psmx_fid_domain *domain);
 int	psmx_am_process_send(struct psmx_fid_domain *domain,
 				struct psmx_am_request *req);
@@ -584,6 +602,8 @@ int	psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 				psm_amarg_t *args, int nargs, void *src, uint32_t len);
 int	psmx_am_atomic_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 				psm_amarg_t *args, int nargs, void *src, uint32_t len);
+
+void	psmx_am_ack_rma(struct psmx_am_request *req);
 
 struct	psmx_fid_mr *psmx_mr_hash_get(uint64_t key);
 int	psmx_mr_validate(struct psmx_fid_mr *mr, uint64_t addr, size_t len, uint64_t access);

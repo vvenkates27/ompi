@@ -47,7 +47,7 @@
 #include "opal/util/opal_environ.h"
 #include "opal/util/os_dirpath.h"
 #include "opal/util/basename.h"
-#include "opal/mca/mca.h"
+#include "orte/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
@@ -1763,11 +1763,6 @@ static void snapc_full_local_comm_read_event(int fd, short flags, void *arg)
         }
 #endif
 
-        orte_grpcomm.finalize();
-        if (ORTE_SUCCESS != (ret = orte_grpcomm.init())) {
-            ORTE_ERROR_LOG(ret);
-            goto cleanup;
-        }
         flushed_modex = true;
     }
 

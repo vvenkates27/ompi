@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -10,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2007-2009 Mellanox Technologies.  All rights reserved.
@@ -18,6 +19,7 @@
  * Copyright (c) 2014      Bull SAS.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015      NVIDIA Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -367,8 +369,8 @@ static inline int post_recvs(mca_btl_base_endpoint_t *ep, const int qp,
         return OPAL_SUCCESS;
 
     for(i = 0; i < num_post; i++) {
-        ompi_free_list_item_t* item;
-        OMPI_FREE_LIST_WAIT_MT(&openib_btl->device->qps[qp].recv_free, item);
+        opal_free_list_item_t* item;
+        item = opal_free_list_wait (&openib_btl->device->qps[qp].recv_free);
         to_base_frag(item)->base.order = qp;
         to_com_frag(item)->endpoint = ep;
         if(NULL == wr)
@@ -544,13 +546,13 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
         mca_btl_openib_send_frag_t *frag, const bool rdma, int do_signal)
 {
     mca_btl_openib_module_t *openib_btl = ep->endpoint_btl;
-    mca_btl_openib_segment_t *seg = &to_base_frag(frag)->segment;
+    mca_btl_base_segment_t *seg = &to_base_frag(frag)->segment;
     struct ibv_sge *sg = &to_com_frag(frag)->sg_entry;
     struct ibv_send_wr *sr_desc = &to_out_frag(frag)->sr_desc;
     struct ibv_send_wr *bad_wr;
     int qp = to_base_frag(frag)->base.order;
 
-    sg->length = seg->base.seg_len + sizeof(mca_btl_openib_header_t) +
+    sg->length = seg->seg_len + sizeof(mca_btl_openib_header_t) +
         (rdma ? sizeof(mca_btl_openib_footer_t) : 0) + frag->coalesced_length;
 
     sr_desc->send_flags = ib_send_flags(sg->length, &(ep->qps[qp]), do_signal);
@@ -641,6 +643,7 @@ static inline int mca_btl_openib_endpoint_credit_acquire (struct mca_btl_base_en
 
     if (!(prio && size < eager_limit && acquire_eager_rdma_send_credit(endpoint) == OPAL_SUCCESS)) {
         *do_rdma = false;
+        prio = !prio;
 
         if (BTL_OPENIB_QP_TYPE_PP(qp)) {
             if (OPAL_THREAD_ADD32(&endpoint->qps[qp].u.pp_qp.sd_credits, -1) < 0) {

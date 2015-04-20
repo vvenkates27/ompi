@@ -5,7 +5,7 @@
  * Copyright (c) 2013      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013-2014 Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2014      Research Organization for Information Science
+ * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
@@ -22,7 +22,7 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif  /* HAVE_UNIST_H */
-#include "opal/mca/mca.h"
+#include "ompi/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/util/argv.h"
 
@@ -159,6 +159,7 @@ static int mca_bcol_base_set_components_to_use(opal_list_t *bcol_components_avai
                 /* found selected component */
                 b_clj = OBJ_NEW(mca_base_component_list_item_t);
                 if (NULL == b_clj) {
+                    opal_argv_free (bcols_requested);
                     return OPAL_ERR_OUT_OF_RESOURCE;
                 }
 
@@ -285,9 +286,13 @@ int mca_bcol_base_set_attributes(struct mca_bcol_base_module_t *bcol_module,
     int coll_type;
 
     comm_attribs = malloc(sizeof(mca_bcol_base_coll_fn_comm_attributes_t));
+    if (NULL == comm_attribs) {
+        return OMPI_ERR_OUT_OF_RESOURCE;
+    }
     inv_attribs = malloc(sizeof(mca_bcol_base_coll_fn_invoke_attributes_t));
 
-    if (!((comm_attribs) && (inv_attribs))) {
+    if (NULL == inv_attribs) {
+        free(comm_attribs);
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 

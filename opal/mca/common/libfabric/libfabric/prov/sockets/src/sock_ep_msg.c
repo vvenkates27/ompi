@@ -34,6 +34,7 @@
 #  include <config.h>
 #endif /* HAVE_CONFIG_H */
 
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -56,35 +57,36 @@
 #include "sock.h"
 #include "sock_util.h"
 
-const struct fi_ep_attr sock_msg_ep_attr = {
+#define SOCK_LOG_INFO(...) _SOCK_LOG_INFO(FI_LOG_EP_CTRL, __VA_ARGS__)
+#define SOCK_LOG_ERROR(...) _SOCK_LOG_ERROR(FI_LOG_EP_CTRL, __VA_ARGS__)
+
+static const struct fi_ep_attr sock_msg_ep_attr = {
+	.type = FI_EP_MSG,
 	.protocol = FI_PROTO_SOCK_TCP,
 	.max_msg_size = SOCK_EP_MAX_MSG_SZ,
-	.inject_size = SOCK_EP_MAX_INJECT_SZ,
-	.total_buffered_recv = SOCK_EP_MAX_BUFF_RECV,
 	.max_order_raw_size = SOCK_EP_MAX_ORDER_RAW_SZ,
 	.max_order_war_size = SOCK_EP_MAX_ORDER_WAR_SZ,
 	.max_order_waw_size = SOCK_EP_MAX_ORDER_WAW_SZ,
 	.mem_tag_format = SOCK_EP_MEM_TAG_FMT,
-	.msg_order = SOCK_EP_MSG_ORDER,
 	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
 	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
 };
 
-const struct fi_tx_attr sock_msg_tx_attr = {
+static const struct fi_tx_attr sock_msg_tx_attr = {
 	.caps = SOCK_EP_MSG_CAP,
-	.op_flags = SOCK_DEF_OPS,
+	.op_flags = FI_TRANSMIT_COMPLETE,
 	.msg_order = SOCK_EP_MSG_ORDER,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
 	.size = SOCK_EP_TX_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 };
 
-const struct fi_rx_attr sock_msg_rx_attr = {
+static const struct fi_rx_attr sock_msg_rx_attr = {
 	.caps = SOCK_EP_MSG_CAP,
-	.op_flags = SOCK_DEF_OPS,
+	.op_flags = 0,
 	.msg_order = SOCK_EP_MSG_ORDER,
 	.total_buffered_recv = SOCK_EP_MAX_BUFF_RECV,
-	.size = SOCK_EP_MAX_MSG_SZ,
+	.size = SOCK_EP_RX_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 };
 
@@ -94,9 +96,6 @@ static int sock_msg_verify_rx_attr(const struct fi_rx_attr *attr)
 		return 0;
 
 	if ((attr->caps | SOCK_EP_MSG_CAP) != SOCK_EP_MSG_CAP)
-		return -FI_ENODATA;
-
-	if ((attr->op_flags | SOCK_EP_MSG_CAP) != SOCK_EP_MSG_CAP)
 		return -FI_ENODATA;
 
 	if ((attr->msg_order | SOCK_EP_MSG_ORDER) != SOCK_EP_MSG_ORDER)
@@ -120,9 +119,6 @@ static int sock_msg_verify_tx_attr(const struct fi_tx_attr *attr)
 		return 0;
 
 	if ((attr->caps | SOCK_EP_MSG_CAP) != SOCK_EP_MSG_CAP)
-		return -FI_ENODATA;
-
-	if ((attr->op_flags | SOCK_EP_MSG_CAP) != SOCK_EP_MSG_CAP)
 		return -FI_ENODATA;
 
 	if ((attr->msg_order | SOCK_EP_MSG_ORDER) != SOCK_EP_MSG_ORDER)
@@ -156,13 +152,6 @@ int sock_msg_verify_ep_attr(struct fi_ep_attr *ep_attr,
 		if (ep_attr->max_msg_size > sock_msg_ep_attr.max_msg_size)
 			return -FI_ENODATA;
 
-		if (ep_attr->inject_size > sock_msg_ep_attr.inject_size)
-			return -FI_ENODATA;
-
-		if (ep_attr->total_buffered_recv > 
-		   sock_msg_ep_attr.total_buffered_recv)
-			return -FI_ENODATA;
-
 		if (ep_attr->max_order_raw_size >
 		   sock_msg_ep_attr.max_order_raw_size)
 			return -FI_ENODATA;
@@ -173,9 +162,6 @@ int sock_msg_verify_ep_attr(struct fi_ep_attr *ep_attr,
 
 		if (ep_attr->max_order_waw_size > 
 		   sock_msg_ep_attr.max_order_waw_size)
-			return -FI_ENODATA;
-
-		if ((ep_attr->msg_order | SOCK_EP_MSG_ORDER) != SOCK_EP_MSG_ORDER)
 			return -FI_ENODATA;
 
 		if ((ep_attr->tx_ctx_cnt > SOCK_EP_MAX_TX_CNT) &&
@@ -193,236 +179,48 @@ int sock_msg_verify_ep_attr(struct fi_ep_attr *ep_attr,
 	return 0;
 }
 
-static struct fi_info *sock_msg_fi_info(struct fi_info *hints, 
-					  void *src_addr, void *dest_addr)
+int sock_msg_fi_info(void *src_addr, void *dest_addr, struct fi_info *hints,
+		     struct fi_info **info)
 {
-	struct fi_info *_info = sock_fi_info(FI_EP_MSG, hints, 
-					     src_addr, dest_addr);
-	if (!_info)
-		return NULL;
+	*info = sock_fi_info(FI_EP_MSG, hints, src_addr, dest_addr);
+	if (!*info)
+		return -FI_ENOMEM;
 	
-	_info->caps = SOCK_EP_MSG_CAP;
-	*(_info->tx_attr) = sock_msg_tx_attr;
-	*(_info->rx_attr) = sock_msg_rx_attr;
-	*(_info->ep_attr) = sock_msg_ep_attr;
+	*(*info)->tx_attr = sock_msg_tx_attr;
+	*(*info)->rx_attr = sock_msg_rx_attr;
+	*(*info)->ep_attr = sock_msg_ep_attr;
 
-	_info->caps |= (_info->rx_attr->caps | _info->tx_attr->caps);
-	return _info;
-}
-
-int sock_msg_getinfo(uint32_t version, const char *node, const char *service,
-		     uint64_t flags, struct fi_info *hints, struct fi_info **info)
-{
-	int ret;
-	int udp_sock;
-	socklen_t len;
-	struct fi_info *_info;
-	struct addrinfo sock_hints;
-	struct addrinfo *result = NULL;
-	struct sockaddr_in *src_addr = NULL, *dest_addr = NULL;
-	char sa_ip[INET_ADDRSTRLEN];
-	char hostname[HOST_NAME_MAX];
-
-	if (!info)
-		return -FI_EBADFLAGS;
-
-	*info = NULL;
-	
-	if (!node && !service && !hints)
-		return -FI_EBADFLAGS;
-
-	if (version != FI_VERSION(SOCK_MAJOR_VERSION, 
-				 SOCK_MINOR_VERSION))
-		return -FI_ENODATA;
-
-	if (hints) {
-		if ((SOCK_EP_MSG_CAP | hints->caps) != SOCK_EP_MSG_CAP) {
-			SOCK_LOG_INFO(
-				   "Cannot support requested options!\n");
-			return -FI_ENODATA;
-		}
-		
-		ret = sock_msg_verify_rx_attr(hints->rx_attr);
-		if (ret)
-			return ret;
-
-		ret = sock_msg_verify_tx_attr(hints->tx_attr);
-		if (ret)
-			return ret;
-	}
-
-	memset(&sock_hints, 0, sizeof(struct addrinfo));
-	sock_hints.ai_family = AF_INET;
-	sock_hints.ai_socktype = SOCK_STREAM;
-
-	if (flags & FI_NUMERICHOST)
-		sock_hints.ai_flags |= AI_NUMERICHOST;
-
-	if ((flags & FI_SOURCE) || !node) {
-
-		if (!node) {
-			gethostname(hostname, HOST_NAME_MAX);
-		}
-
-		ret = getaddrinfo(node ? node : hostname, service, 
-				  &sock_hints, &result);
-		if (ret != 0) {
-			ret = FI_ENODATA;
-			SOCK_LOG_INFO("getaddrinfo failed!\n");
-			goto err;
-		}
-
-		while (result) {
-			if (result->ai_family == AF_INET && 
-			    result->ai_addrlen == sizeof(struct sockaddr_in))
-				break;
-			result = result->ai_next;
-		}
-
-		if (!result) {
-			SOCK_LOG_ERROR("getaddrinfo failed\n");
-			ret = -FI_EINVAL;
-			goto err;
-		}
-		
-		src_addr = calloc(1, sizeof(struct sockaddr_in));
-		if (!src_addr) {
-			ret = -FI_ENOMEM;
-			goto err;
-		}
-		memcpy(src_addr, result->ai_addr, result->ai_addrlen);
-		freeaddrinfo(result); 
-	} else if (node || service) {
-
-		ret = getaddrinfo(node, service, &sock_hints, &result);
-		if (ret != 0) {
-			ret = FI_ENODATA;
-			SOCK_LOG_INFO("getaddrinfo failed!\n");
-			goto err;
-		}
-		
-		while (result) {
-			if (result->ai_family == AF_INET && 
-			    result->ai_addrlen == sizeof(struct sockaddr_in))
-				break;
-			result = result->ai_next;
-		}
-
-		if (!result) {
-			SOCK_LOG_ERROR("getaddrinfo failed\n");
-			ret = -FI_EINVAL;
-			goto err;
-		}
-		
-		dest_addr = calloc(1, sizeof(struct sockaddr_in));
-		if (!dest_addr) {
-			ret = -FI_ENOMEM;
-			goto err;
-		}
-		memcpy(dest_addr, result->ai_addr, result->ai_addrlen);
-		
-		udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
-		ret = connect(udp_sock, result->ai_addr, 
-			      result->ai_addrlen);
-		if ( ret != 0) {
-			SOCK_LOG_ERROR("Failed to create udp socket\n");
-			ret = FI_ENODATA;
-			goto err;
-		}
-
-		len = sizeof(struct sockaddr_in);		
-		src_addr = calloc(1, sizeof(struct sockaddr_in));
-		if (!src_addr) {
-			ret = -FI_ENOMEM;
-			goto err;
-		}		
-		ret = getsockname(udp_sock, (struct sockaddr*)src_addr, &len);
-		if (ret != 0) {
-			SOCK_LOG_ERROR("getsockname failed\n");
-			close(udp_sock);
-			ret = FI_ENODATA;
-			goto err;
-		}
-		close(udp_sock);
-		freeaddrinfo(result); 
-	}
-
-	if (hints->src_addr) {
-		assert(hints->src_addrlen == sizeof(struct sockaddr_in));
-		memcpy(src_addr, hints->src_addr, hints->src_addrlen);
-	}
-
-	if (hints->dest_addr) {
-		if (!dest_addr) {
-			dest_addr = calloc(1, sizeof(struct sockaddr_in));
-			if (!dest_addr) {
-				ret = -FI_ENOMEM;
-				goto err;
-			}
-		}
-		assert(hints->dest_addrlen == sizeof(struct sockaddr_in));
-		memcpy(dest_addr, hints->dest_addr, hints->dest_addrlen);
-	}
-
-	if (dest_addr) {
-		if (!dest_addr) {
-			dest_addr = calloc(1, sizeof(struct sockaddr_in));
-			if (!dest_addr) {
-				ret = -FI_ENOMEM;
-				goto err;
-			}
-		}
-		memcpy(sa_ip, inet_ntoa(dest_addr->sin_addr), INET_ADDRSTRLEN);
-		SOCK_LOG_INFO("dest_addr: family: %d, IP is %s\n",
-			      ((struct sockaddr_in*)dest_addr)->sin_family, sa_ip);
-	}
-	
-	if (src_addr) {
-		if (!src_addr) {
-			src_addr = calloc(1, sizeof(struct sockaddr_in));				
-			if (!src_addr) {
-				ret = -FI_ENOMEM;
-				goto err;
-			}
-		}
-		memcpy(sa_ip, inet_ntoa(src_addr->sin_addr), INET_ADDRSTRLEN);
-		SOCK_LOG_INFO("src_addr: family: %d, IP is %s\n",
-			      ((struct sockaddr_in*)src_addr)->sin_family, sa_ip);
-	}
-
-	_info = sock_msg_fi_info(hints, src_addr, dest_addr);
-	if (!_info) {
-		ret = FI_ENOMEM;
-		goto err;
-	}
-
-	*info = _info;
-	if (src_addr)
-		free(src_addr);
-	if (dest_addr)
-		free(dest_addr);
+	(*info)->caps = SOCK_EP_MSG_CAP |
+			(*info)->rx_attr->caps | (*info)->tx_attr->caps;
 	return 0;
-
-err:
-	if (src_addr)
-		free(src_addr);
-	if (dest_addr)
-		free(dest_addr);
-	SOCK_LOG_ERROR("fi_getinfo failed\n");
-	return ret;	
 }
 
 static int sock_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 {
-	struct sock_ep *sock_ep;
+	struct sock_ep *sock_ep = NULL;
+	struct sock_pep *sock_pep = NULL;
+
 	if (*addrlen == 0) {
 		*addrlen = sizeof(struct sockaddr_in);
 		return -FI_ETOOSMALL;
 	}
 
-	sock_ep = container_of(fid, struct sock_ep, ep.fid);
 	*addrlen = MIN(*addrlen, sizeof(struct sockaddr_in));
-	memcpy(addr, sock_ep->src_addr, *addrlen);
+
+	switch(fid->fclass) {
+	case FI_CLASS_EP:
+	case FI_CLASS_SEP:
+		sock_ep = container_of(fid, struct sock_ep, ep.fid);
+		memcpy(addr, sock_ep->src_addr, *addrlen);
+		break;
+	case FI_CLASS_PEP:
+		sock_pep = container_of(fid, struct sock_pep, pep.fid);
+		memcpy(addr, &sock_pep->src_addr, *addrlen);
+		break;
+	default:
+		SOCK_LOG_ERROR("Invalid argument\n");
+		return -FI_EINVAL;
+	}
 	return 0;
 }
 
@@ -441,7 +239,7 @@ static int sock_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
 	return 0;
 }
 
-static int sock_ep_cm_create_socket() 
+static int sock_ep_cm_create_socket(void)
 {
 	int sock, optval;
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -449,180 +247,320 @@ static int sock_ep_cm_create_socket()
 		return 0;
 	
 	optval = 1;
-	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, 
-		   &optval, sizeof optval);
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, 
+		       &optval, sizeof optval))
+		SOCK_LOG_ERROR("setsockopt failed\n");
 	return sock;
 }
 
-
-static int sock_ep_cm_send_msg(int sock_fd, 
-			       const struct sockaddr_in *addr, void *msg, size_t len)
+static int sock_ep_cm_enqueue_msg(struct sock_cm_entry *cm,
+				  const struct sockaddr_in *addr, 
+				  void *msg, size_t len, 
+				  fid_t fid, struct sock_eq *eq)
 {
-	int ret, retry = 0;
-	unsigned char response;
-	struct sockaddr_in from_addr;
-	socklen_t addr_len;
+	char c = 0;
+	int ret = 0;
+	struct sock_cm_msg_list_entry *list_entry;
+
+	list_entry = calloc(1, sizeof(*list_entry) + len);
+	if (!list_entry)
+		return -FI_ENOMEM;
+
+	list_entry->msg_len = len;
+	memcpy(&list_entry->msg[0], msg, len);
+	memcpy(&list_entry->addr, addr, sizeof(*addr));
+	list_entry->fid = fid;
+	list_entry->eq = eq;
+
+	fastlock_acquire(&cm->lock);
+	dlist_insert_tail(&list_entry->entry, &cm->msg_list);
+	fastlock_release(&cm->lock);
+
+	ret = write(cm->signal_fds[0], &c, 1);
+	if (ret != 1) {
+		SOCK_LOG_INFO("failed to signal\n");
+		ret = -FI_EIO;
+	} else {
+		ret = 0;
+		SOCK_LOG_INFO("Enqueued CM Msg\n");
+	}
+	return ret;
+}
+
+static int sock_ep_cm_send_msg(struct sock_cm_entry *cm, 
+			       const struct sockaddr_in *addr, 
+			       void *msg, size_t len)
+{
+	int ret;
 	char sa_ip[INET_ADDRSTRLEN] = {0};
-
+	
 	memcpy(sa_ip, inet_ntoa(addr->sin_addr), INET_ADDRSTRLEN);
-	SOCK_LOG_INFO("Sending message to %s:%d\n",
-		      sa_ip, ntohs(addr->sin_port));
+	SOCK_LOG_INFO("Sending message to %s:%d\n", sa_ip, ntohs(addr->sin_port));
 
-	while (retry < SOCK_EP_MAX_RETRY) {
-		ret = sendto(sock_fd, (char *)msg, len, 0, addr, sizeof *addr);
-		SOCK_LOG_INFO("Total Sent: %d\n", ret);
-		if (ret < 0) 
-			return -1;
-		
-		ret = fi_poll_fd(sock_fd, SOCK_CM_COMM_TIMEOUT);
-		retry++;
-		if (ret <= 0) {
-			continue;
-		}
-
-		addr_len = sizeof(struct sockaddr_in);
-		ret = recvfrom(sock_fd, &response, sizeof(response), 0,
-			       &from_addr, &addr_len);
-		SOCK_LOG_INFO("Received ACK: %d\n", ret);
-		if (ret == sizeof(response))
-			return 0;
-	}
-	return -1;
+	ret = sendto(cm->sock, (char *) msg, len, 0,
+		     (struct sockaddr *) addr, sizeof *addr);
+	SOCK_LOG_INFO("Total Sent: %d\n", ret);
+	return (ret == len) ? 0 : -1;
 }
 
-static int sock_ep_cm_send_ack(int sock_fd, struct sockaddr_in *addr)
+static void sock_ep_cm_release_entry(struct sock_cm_msg_list_entry *msg_entry)
 {
-	int ack_sent = 0, retry = 0, ret;
-	unsigned char response;
-
-	while(!ack_sent && retry < SOCK_EP_MAX_RETRY) {
-		ret = sendto(sock_fd, &response, sizeof(response), 0,
-			     addr, sizeof *addr);
-		retry++;
-
-		SOCK_LOG_INFO("ack: %d\n", ret);
-		
-		if (ret == sizeof(response)) {
-			ack_sent = 1;
-				break;
-		}
-			
-		if (ret == EWOULDBLOCK || ret == EAGAIN)
-			usleep(SOCK_CM_COMM_TIMEOUT * 1000);
-	}
-	return ack_sent;
-}
-
-static void *sock_msg_ep_listener_thread (void *data)
-{
-	struct sock_ep *ep = (struct sock_ep *)data;
-	struct sock_conn_response *conn_response = NULL;
-
+	struct sock_conn_hdr *msg_hdr;
 	struct fi_eq_cm_entry cm_entry;
-	struct fi_eq_err_entry cm_err_entry;
-
-	struct sockaddr_in from_addr;
-	socklen_t addr_len;
-	int ret, user_data_sz;
-	struct fid_ep *fid_ep;
 	struct sock_ep *sock_ep;
 
-	SOCK_LOG_INFO("Starting listener thread for EP: %p\n", ep);
-	ep->do_listen = 1;
+	msg_hdr = (struct sock_conn_hdr*)msg_entry->msg;
+	if (msg_hdr->type == SOCK_CONN_SHUTDOWN) {
+		memset(&cm_entry, 0, sizeof cm_entry);
+		cm_entry.fid = msg_entry->fid;
+		sock_ep = container_of(cm_entry.fid, struct sock_ep, ep.fid);
+		if (sock_eq_report_event(msg_entry->eq, FI_SHUTDOWN, &cm_entry,
+					 sizeof(cm_entry), 0))
+			SOCK_LOG_ERROR("Error in writing to EQ\n");
+		sock_ep->cm.shutdown_received = 1;
+		sock_ep_disable(&sock_ep->ep);
+	} else {
+		if (sock_eq_report_error(msg_entry->eq, msg_entry->fid, NULL,
+					 0, FI_ETIMEDOUT, -FI_ETIMEDOUT, NULL, 0))
+			SOCK_LOG_ERROR("failed to report error\n");
+	}
 
-	while((volatile int)ep->do_listen) {
-		ret = fi_poll_fd(ep->socket, -1);
-		if (ret <= 0)
+	dlist_remove(&msg_entry->entry);
+	free(msg_entry);
+}
+
+static void sock_ep_cm_flush_msg(struct sock_cm_entry *cm)
+{
+	struct dlist_entry *entry, *next_entry;
+	struct sock_cm_msg_list_entry *msg_entry;
+	fastlock_acquire(&cm->lock);
+	for (entry = cm->msg_list.next; entry != &cm->msg_list;) {
+		msg_entry = container_of(entry, 
+					 struct sock_cm_msg_list_entry, entry);
+		next_entry = entry->next;
+
+		if (msg_entry->timestamp_ms != 0 &&
+		    fi_gettime_ms() - msg_entry->timestamp_ms < SOCK_CM_COMM_TIMEOUT) {
+			entry = next_entry;
 			continue;
-		
-		if (conn_response == NULL) {
-			conn_response = (struct sock_conn_response*)
-				calloc(1, sizeof(*conn_response) + 
-				       SOCK_EP_MAX_CM_DATA_SZ);
-			if (!conn_response) {
-				SOCK_LOG_ERROR("cannot allocate\n");
-				return NULL;
-			}
 		}
 		
-		addr_len = sizeof(struct sockaddr_in);
-		ret = recvfrom(ep->socket, (char*)conn_response, 
+		msg_entry->timestamp_ms = fi_gettime_ms();
+		msg_entry->retry++;
+
+		if (msg_entry->retry > SOCK_EP_MAX_RETRY) {
+			sock_ep_cm_release_entry(msg_entry);
+			entry = next_entry;
+			continue;
+		}
+		
+		if (sock_ep_cm_send_msg(cm, &msg_entry->addr, 
+					&msg_entry->msg, msg_entry->msg_len))
+			SOCK_LOG_INFO("Failed to send out cm message\n");
+		entry = next_entry;
+	}
+	fastlock_release(&cm->lock);
+}
+
+static int sock_ep_cm_send_ack(struct sock_cm_entry *cm, struct sockaddr_in *addr,
+			       uint64_t msg_id)
+{
+	int ret;
+	struct sock_conn_response conn_response;
+	
+	memset(&conn_response, 0, sizeof(conn_response));
+	conn_response.hdr.type = SOCK_CONN_ACK;
+	conn_response.hdr.msg_id = msg_id;
+
+	ret = sendto(cm->sock, &conn_response, sizeof conn_response, 0,
+		     (struct sockaddr *) addr, sizeof *addr);
+	SOCK_LOG_INFO("Total Sent: %d\n", ret);
+	sock_ep_cm_flush_msg(cm);
+	return (ret == sizeof conn_response) ? 0 : -1;
+}
+
+static void sock_ep_cm_handle_ack(struct sock_cm_entry *cm,
+				  struct sock_conn_hdr *hdr)
+{
+	struct sock_conn_hdr *msg_hdr;
+	struct dlist_entry *entry;
+	struct sock_cm_msg_list_entry *msg_entry;
+	struct fi_eq_cm_entry cm_entry;
+	struct sock_ep *sock_ep;
+
+	sock_ep = container_of(cm, struct sock_ep, cm);
+	fastlock_acquire(&cm->lock);
+	for (entry = cm->msg_list.next; entry != &cm->msg_list;) {
+
+		msg_entry = container_of(entry, struct sock_cm_msg_list_entry, 
+					 entry);
+		msg_hdr = (struct sock_conn_hdr*)msg_entry->msg;
+
+		if (msg_hdr->msg_id == hdr->msg_id) {
+			if (msg_hdr->type == SOCK_CONN_SHUTDOWN) {
+				memset(&cm_entry, 0, sizeof cm_entry);
+				cm_entry.fid = &sock_ep->ep.fid;
+				if (sock_ep->cm.shutdown_received)
+					break;
+
+				if (sock_eq_report_event(sock_ep->eq, FI_SHUTDOWN, &cm_entry,
+							 sizeof(cm_entry), 0))
+					SOCK_LOG_ERROR("Error in writing to EQ\n");
+			}
+			dlist_remove(entry);
+			free(msg_entry);
+			break;
+		}
+		entry = entry->next;
+	}
+	fastlock_release(&cm->lock);
+}
+
+
+static void *sock_msg_ep_listener_thread(void *data)
+{
+	struct pollfd poll_fds[2];
+	struct sock_ep *ep = (struct sock_ep*)data;
+	struct sock_conn_response *conn_response;
+	struct fi_eq_cm_entry *cm_entry;
+
+	struct sockaddr_in from_addr;
+	socklen_t addr_len;
+	int ret, user_data_sz, entry_sz, timeout;
+	char tmp = 0;
+
+	ep->cm.sock = sock_ep_cm_create_socket();
+	if (!ep->cm.sock) {
+		SOCK_LOG_ERROR("Cannot open socket\n");
+		return NULL;
+	}
+
+	SOCK_LOG_INFO("Starting listener thread for EP: %p\n", ep);
+	conn_response = calloc(1, sizeof(*conn_response) + SOCK_EP_MAX_CM_DATA_SZ);
+	if (!conn_response) {
+		SOCK_LOG_ERROR("cannot allocate\n");
+		return NULL;
+	}
+
+	cm_entry = calloc(1, sizeof(*cm_entry) + SOCK_EP_MAX_CM_DATA_SZ);
+	if (!cm_entry) {
+		free (conn_response);
+		SOCK_LOG_ERROR("cannot allocate\n");
+		return NULL;
+	}
+
+	poll_fds[0].fd = ep->cm.sock;
+	poll_fds[1].fd = ep->cm.signal_fds[1];
+	poll_fds[0].events = poll_fds[1].events = POLLIN;
+
+	while (*((volatile int*) &ep->cm.do_listen)) {
+		timeout = dlist_empty(&ep->cm.msg_list) ? -1 : SOCK_CM_COMM_TIMEOUT;
+		if ((ret = poll(poll_fds, 2, timeout)) > 0) {
+			if (poll_fds[1].revents & POLLIN) {
+				ret = read(ep->cm.signal_fds[1], &tmp, 1);
+				if (ret != 1) {
+					SOCK_LOG_INFO("Invalid signal\n");
+					break;
+				}
+				sock_ep_cm_flush_msg(&ep->cm);
+				continue;
+			}
+		} else {
+			if (ret == 0) {
+				sock_ep_cm_flush_msg(&ep->cm);
+				continue;
+			} else {
+				break;
+			}
+		}
+
+		addr_len = sizeof(from_addr);
+		ret = recvfrom(ep->cm.sock, (char*) conn_response,
 			       sizeof(*conn_response) + SOCK_EP_MAX_CM_DATA_SZ,
-			       0, &from_addr, &addr_len);
+			       0, (struct sockaddr *) &from_addr, &addr_len);
 		if (ret <= 0)
 			continue;
 		
 		SOCK_LOG_INFO("Total received: %d\n", ret);
 		
-		if (ret < sizeof(*conn_response) || 
-		    !sock_ep_cm_send_ack(ep->socket, &from_addr))
+		if (ret < sizeof(*conn_response))
 			continue;
+		
+		if (conn_response->hdr.type != SOCK_CONN_ACK) 
+			sock_ep_cm_send_ack(&ep->cm, &from_addr, conn_response->hdr.msg_id);
 
-		user_data_sz = 0;
+		user_data_sz = ret - sizeof(*conn_response);
 		switch (conn_response->hdr.type) {
-			
-		case SOCK_CONN_ACCEPT:
-			SOCK_LOG_INFO("Received SOCK_CONN_ACCEPT\n");
-			memset(&cm_entry, 0, sizeof(cm_entry));
-			cm_entry.fid = conn_response->hdr.c_fid;
 
-			if (ret > sizeof(struct sock_conn_response)) {
-				user_data_sz = ret - 
-					sizeof(struct sock_conn_response);
-				memcpy(&cm_entry.data,
-				       (char *)conn_response + 
-				       sizeof(struct sock_conn_response),
-				       user_data_sz);
-			}
-
-			fid_ep = container_of(conn_response->hdr.c_fid, 
-					      struct fid_ep, fid);
-			sock_ep = container_of(fid_ep, struct sock_ep, ep);
-			sock_ep->connected = 1;
-			sock_ep_enable(&ep->ep);
-			if (sock_eq_report_event(ep->eq, FI_CONNECTED, &cm_entry, 
-						 sizeof(cm_entry) + user_data_sz, 0)) 
-				SOCK_LOG_ERROR("Error in writing to EQ\n");
+		case SOCK_CONN_ACK:
+			SOCK_LOG_INFO("Received SOCK_CONN_ACK\n");
+			sock_ep_cm_handle_ack(&ep->cm, &conn_response->hdr);
 			break;
 
+		case SOCK_CONN_ACCEPT:
+			SOCK_LOG_INFO("Received SOCK_CONN_ACCEPT\n");
+
+			entry_sz = sizeof(*cm_entry) + user_data_sz;
+			memset(cm_entry, 0, sizeof *cm_entry);
+			cm_entry->fid = &ep->ep.fid;
+
+			memcpy(&ep->cm_addr, &from_addr, sizeof(from_addr));
+			memcpy(&cm_entry->data, &conn_response->user_data,
+			       user_data_sz);
+
+			if (ep->is_disabled || ep->cm.shutdown_received)
+				break;
+
+			ep->connected = 1;
+			((struct sockaddr_in*) ep->dest_addr)->sin_port =
+				conn_response->hdr.s_port;
+
+			sock_ep_enable(&ep->ep);
+			if (sock_eq_report_event(ep->eq, FI_CONNECTED, cm_entry,
+						 entry_sz, 0))
+				SOCK_LOG_ERROR("Error in writing to EQ\n");
+			break;
 		case SOCK_CONN_REJECT:
 			SOCK_LOG_INFO("Received SOCK_CONN_REJECT\n");
-			memset(&cm_err_entry, 0, sizeof(cm_err_entry));
-			cm_err_entry.fid = conn_response->hdr.c_fid;
-			cm_err_entry.context = NULL;
-			cm_err_entry.data = 0;
-			cm_err_entry.err = -FI_ECONNREFUSED;
-			cm_err_entry.prov_errno = 0;
-			cm_err_entry.err_data = NULL;
+			
+			if (ep->is_disabled || ep->cm.shutdown_received)
+				break;
 
-			if (ret > sizeof(struct sock_conn_response)) {
-				user_data_sz = ret - 
-					sizeof(struct sock_conn_response);
-				memcpy(&cm_entry.data,
-				       (char *)conn_response + 
-				       sizeof(struct sock_conn_response),
-				       user_data_sz);
-			}
+			if (sock_eq_report_error(ep->eq, &ep->ep.fid, NULL, 0,
+						 FI_ECONNREFUSED, -FI_ECONNREFUSED,
+						 &conn_response->user_data, 
+						 user_data_sz))
+				SOCK_LOG_ERROR("Error in writing to EQ\n");
+			goto out;
 
-			if (sock_eq_report_event(ep->eq, FI_ECONNREFUSED, 
-						 &cm_err_entry, 
-						 sizeof (cm_err_entry) + 
-						 user_data_sz, 0))
+		case SOCK_CONN_SHUTDOWN:
+			SOCK_LOG_INFO("Received SOCK_CONN_SHUTDOWN\n");
+
+			entry_sz = sizeof(*cm_entry);
+			memset(cm_entry, 0, sizeof *cm_entry);
+			cm_entry->fid = &ep->ep.fid;
+
+			if (ep->cm.shutdown_received)
+				break;
+
+			sock_ep_disable(&ep->ep);
+			ep->cm.shutdown_received = 1;
+			if (sock_eq_report_event(ep->eq, FI_SHUTDOWN, cm_entry,
+						 entry_sz, 0))
 				SOCK_LOG_ERROR("Error in writing to EQ\n");
 			goto out;
 
 		default:
-			SOCK_LOG_ERROR("Invalid event\n");
+			SOCK_LOG_ERROR("Invalid event: %d\n", conn_response->hdr.type);
 			break;
 		}
-		conn_response = NULL;
 	}
 
 out:
-	if (conn_response)
-		free(conn_response);
-	close(ep->socket);
-	ep->socket = 0;
+	free(conn_response);
+	free(cm_entry);
+	close(ep->cm.sock);
+	ep->cm.listener_thread = 0L;
 	return NULL;
 }
 
@@ -632,54 +570,47 @@ static int sock_ep_cm_connect(struct fid_ep *ep, const void *addr,
 	struct sock_conn_req *req;
 	struct sock_ep *_ep;
 	struct sock_eq *_eq;
+	int ret = 0;
+
 	_ep = container_of(ep, struct sock_ep, ep);
 	_eq = _ep->eq;
 	if (!_eq || paramlen > SOCK_EP_MAX_CM_DATA_SZ) 
 		return -FI_EINVAL;
 
-	req = (struct sock_conn_req*)calloc(1, 
-					    sizeof(*req) + paramlen);
+	req = calloc(1, sizeof(*req) + paramlen);
 	if (!req)
 		return -FI_ENOMEM;
 
-	_ep->rem_ep_id = ((struct sockaddr *)addr)->sa_family;
-	((struct sockaddr *)addr)->sa_family = AF_INET;
+	((struct sockaddr *) addr)->sa_family = AF_INET;
 
 	req->hdr.type = SOCK_CONN_REQ;
-	req->ep_id = _ep->ep_id;
-	req->hdr.c_fid = &ep->fid;
-	req->hdr.s_fid = 0;
-	memcpy(&req->info, &_ep->info, sizeof(struct fi_info));
-	memcpy(&req->src_addr, _ep->info.src_addr, sizeof(struct sockaddr_in));
-	memcpy(&req->dest_addr, _ep->info.dest_addr, sizeof(struct sockaddr_in));
-	memcpy(&req->tx_attr, _ep->info.tx_attr, sizeof(struct fi_tx_attr));
-	memcpy(&req->rx_attr, _ep->info.rx_attr, sizeof(struct fi_rx_attr));
-	memcpy(&req->ep_attr, _ep->info.ep_attr, sizeof(struct fi_ep_attr));
-	memcpy(&req->domain_attr, _ep->info.domain_attr, sizeof(struct fi_domain_attr));
-	memcpy(&req->fabric_attr, _ep->info.fabric_attr, sizeof(struct fi_fabric_attr));
+	req->hdr.msg_id = _ep->cm.next_msg_id++;
+	req->info = _ep->info;
+	memcpy(&req->src_addr, _ep->src_addr, sizeof(req->src_addr));
+	memcpy(&req->dest_addr, _ep->info.dest_addr, sizeof(req->dest_addr));
+	req->tx_attr = *_ep->info.tx_attr;
+	req->rx_attr = *_ep->info.rx_attr;
+	req->ep_attr = *_ep->info.ep_attr;
+	req->domain_attr = *_ep->info.domain_attr;
+	req->fabric_attr = *_ep->info.fabric_attr;
+
 	if (param && paramlen)
 		memcpy(&req->user_data, param, paramlen);
 	
-	if (!_ep->socket) {
-		_ep->socket = sock_ep_cm_create_socket();
-		if (!_ep->socket) {
-			free (req);
-			return -FI_EIO;
-		}
-	}
-
-	if (sock_ep_cm_send_msg(_ep->socket, addr, req, sizeof (*req) + paramlen))
-		return -FI_EIO;
-
-	if (pthread_create(&_ep->listener_thread, NULL, 
-			   sock_msg_ep_listener_thread, (void *)_ep)) {
-		SOCK_LOG_ERROR("Couldn't create listener thread\n");
-		free (req);
-		return -FI_EINVAL;
+	memcpy(&_ep->cm_addr, addr, sizeof(struct sockaddr_in));
+	if (sock_ep_cm_enqueue_msg(&_ep->cm, addr, req, 
+				   sizeof (*req) + paramlen, 
+				   &_ep->ep.fid, _eq)) {
+		ret = -FI_EIO;
+		goto err;
 	}
 
 	free (req);
 	return 0;
+
+err:
+	free(req);
+	return ret;
 }
 
 static int sock_ep_cm_accept(struct fid_ep *ep, const void *param, size_t paramlen)
@@ -690,42 +621,41 @@ static int sock_ep_cm_accept(struct fid_ep *ep, const void *param, size_t paraml
 	struct sockaddr_in *addr;
 	struct sock_ep *_ep;
 	struct sock_eq *_eq;
-	int ret;
+	int ret = 0;
 
 	_ep = container_of(ep, struct sock_ep, ep);
 	_eq = _ep->eq;
 	if (!_eq || paramlen > SOCK_EP_MAX_CM_DATA_SZ) 
 		return -FI_EINVAL;
 
-	response = (struct sock_conn_response*)calloc(1, 
-						 sizeof(*response) + paramlen);
+	if (_ep->is_disabled || _ep->cm.shutdown_received)
+		return -FI_EINVAL;
+
+	response = calloc(1, sizeof(*response) + paramlen);
 	if (!response)
 		return -FI_ENOMEM;
 
-	req = (struct sock_conn_req *)_ep->info.connreq;
+	req = (struct sock_conn_req *) _ep->info.connreq;
 	if (!req) {
 		SOCK_LOG_ERROR("invalid connreq for cm_accept\n");
+		free(response);
 		return -FI_EINVAL;
 	}
 	
-	memcpy(&response->hdr, &req->hdr, sizeof(struct sock_conn_hdr));
+	memcpy(&response->hdr, &req->hdr, sizeof(response->hdr));
 	if (param && paramlen)
 		memcpy(&response->user_data, param, paramlen);
 
 	addr = &req->from_addr;
-	_ep->rem_ep_id = req->ep_id;
-	response->hdr.type = SOCK_CONN_ACCEPT;
-	response->hdr.s_fid = &ep->fid;
+	memcpy(&_ep->cm_addr, addr, sizeof(*addr));
 
-	_ep->socket = sock_ep_cm_create_socket();
-	if (!_ep->socket) {
-		ret = -FI_EIO;
-		goto out;
-	}
-	
-	if (sock_ep_cm_send_msg(_ep->socket, addr, response, 
-				sizeof (*response) + paramlen)) {
-		close(_ep->socket);
+	response->hdr.type = SOCK_CONN_ACCEPT;
+	req->hdr.msg_id = _ep->cm.next_msg_id++;
+	response->hdr.s_port = htons(atoi(_ep->listener.service));
+
+	if (sock_ep_cm_enqueue_msg(&_ep->cm, addr, response, 
+				   sizeof (*response) + paramlen,
+				   &_ep->ep.fid, _ep->eq)) {
 		ret = -FI_EIO;
 		goto out;
 	}
@@ -743,6 +673,26 @@ out:
 	return ret;
 }
 
+static int sock_ep_cm_shutdown(struct fid_ep *ep, uint64_t flags)
+{
+	struct sock_conn_response response;
+	struct sock_ep *_ep;
+
+	_ep = container_of(ep, struct sock_ep, ep);
+	memset(&response, 0, sizeof(response));
+
+	response.hdr.type = SOCK_CONN_SHUTDOWN;
+	response.hdr.msg_id = _ep->cm.next_msg_id++;
+
+	if (sock_ep_cm_enqueue_msg(&_ep->cm, &_ep->cm_addr, &response, 
+				   sizeof response, &_ep->ep.fid, _ep->eq)) {
+		return -FI_EIO;
+	}
+
+	sock_ep_disable(ep);
+	return 0;
+}
+
 struct fi_ops_cm sock_ep_cm_ops = {
 	.size = sizeof(struct fi_ops_cm),
 	.getname = sock_ep_cm_getname,
@@ -751,29 +701,29 @@ struct fi_ops_cm sock_ep_cm_ops = {
 	.listen = fi_no_listen,
 	.accept = sock_ep_cm_accept,
 	.reject = fi_no_reject,
-	.shutdown = fi_no_shutdown,
+	.shutdown = sock_ep_cm_shutdown,
 };
 
-int sock_msg_endpoint(struct fid_domain *domain, struct fi_info *info,
+static int sock_msg_endpoint(struct fid_domain *domain, struct fi_info *info,
 		struct sock_ep **ep, void *context, size_t fclass)
 {
 	int ret;
 
 	if (info) {
 		if (info->ep_attr) {
-			ret = sock_msg_verify_ep_attr(info->ep_attr, 
-						      info->tx_attr, 
+			ret = sock_msg_verify_ep_attr(info->ep_attr,
+						      info->tx_attr,
 						      info->rx_attr);
 			if (ret)
 				return ret;
 		}
-			
+
 		if (info->tx_attr) {
 			ret = sock_msg_verify_tx_attr(info->tx_attr);
 			if (ret)
 				return ret;
 		}
-		
+
 		if (info->rx_attr) {
 			ret = sock_msg_verify_rx_attr(info->rx_attr);
 			if (ret)
@@ -806,7 +756,14 @@ int sock_msg_ep(struct fid_domain *domain, struct fi_info *info,
 	ret = sock_msg_endpoint(domain, info, &endpoint, context, FI_CLASS_EP);
 	if (ret)
 		return ret;
-	
+
+	endpoint->cm.do_listen = 1;	
+	if (pthread_create(&endpoint->cm.listener_thread, NULL, 
+			   sock_msg_ep_listener_thread, endpoint)) {
+		SOCK_LOG_ERROR("Couldn't create listener thread\n");
+		return -FI_EINVAL;
+	}
+		
 	*ep = &endpoint->ep;
 	return 0;
 }
@@ -832,13 +789,25 @@ static int sock_pep_fi_bind(fid_t fid, struct fid *bfid, uint64_t flags)
 
 static int sock_pep_fi_close(fid_t fid)
 {
-	int c;
+	int ret;
+	char c = 0;
 	struct sock_pep *pep;
 
 	pep = container_of(fid, struct sock_pep, pep.fid);
-	pep->do_listen = 0;
-	write(pep->signal_fds[0], &c, 1);
-	pthread_join(pep->listener_thread, NULL);
+	pep->cm.do_listen = 0;
+	ret = write(pep->cm.signal_fds[0], &c, 1);
+	if (ret != 1) 
+		SOCK_LOG_INFO("Failed to signal\n");
+
+	if (pep->cm.listener_thread && 
+	    pthread_join(pep->cm.listener_thread, NULL)) {
+		SOCK_LOG_INFO("pthread join failed\n");
+	}
+
+	close(pep->cm.signal_fds[0]);
+	close(pep->cm.signal_fds[1]);
+	fastlock_destroy(&pep->cm.lock);
+
 	free(pep);
 	return 0;
 }
@@ -877,79 +846,107 @@ static void *sock_pep_listener_thread (void *data)
 {
 	struct sock_pep *pep = (struct sock_pep *)data;
 	struct sock_conn_req *conn_req = NULL;
-	struct fi_eq_cm_entry cm_entry;
+	struct fi_eq_cm_entry *cm_entry;
 	struct sockaddr_in from_addr;
 	struct pollfd poll_fds[2];
 
 	socklen_t addr_len;
-	int ret, user_data_sz, tmp;
+	int ret = 0, user_data_sz, entry_sz, timeout;
+	char tmp = 0;
 
 	SOCK_LOG_INFO("Starting listener thread for PEP: %p\n", pep);
+	cm_entry = calloc(1, sizeof(*cm_entry) + SOCK_EP_MAX_CM_DATA_SZ);
+	if (!cm_entry) {
+		SOCK_LOG_ERROR("cannot allocate\n");
+		return NULL;
+	}
 
-	poll_fds[0].fd = pep->socket;
-	poll_fds[1].fd = pep->signal_fds[1];
+	poll_fds[0].fd = pep->cm.sock;
+	poll_fds[1].fd = pep->cm.signal_fds[1];
 	poll_fds[0].events = poll_fds[1].events = POLLIN;
-	while((volatile int)pep->do_listen) {
-		if (poll(poll_fds, 2, -1) > 0) {
+	while(*((volatile int*)&pep->cm.do_listen)) {
+		timeout = dlist_empty(&pep->cm.msg_list) ? -1 : SOCK_CM_COMM_TIMEOUT;
+		if (poll(poll_fds, 2, timeout) > 0) {
 			if (poll_fds[1].revents & POLLIN) {
-				read(pep->signal_fds[1], &tmp, 1);
+				ret = read(pep->cm.signal_fds[1], &tmp, 1);
+				if (ret != 1)
+					SOCK_LOG_INFO("Invalid signal\n");
+				sock_ep_cm_flush_msg(&pep->cm);
 				continue;
 			}
-		} else
-			return NULL;
-		
-		if (conn_req == NULL) {
-			conn_req = (struct sock_conn_req*)calloc(1, 
-								 sizeof(*conn_req) + 
-								 SOCK_EP_MAX_CM_DATA_SZ);
-			if (!conn_req) {
-				SOCK_LOG_ERROR("cannot allocate\n");
-				return NULL;
+		} else {
+			if (ret == 0) {
+				sock_ep_cm_flush_msg(&pep->cm);
+				continue;
+			} else {
+				break;
 			}
 		}
-		
+
+		if (conn_req == NULL) {
+			conn_req = calloc(1, sizeof(*conn_req) + SOCK_EP_MAX_CM_DATA_SZ);
+			if (!conn_req) {
+				SOCK_LOG_ERROR("cannot allocate\n");
+				break;
+			}
+		}
+
 		addr_len = sizeof(struct sockaddr_in);
-		ret = recvfrom(pep->socket, (char*)conn_req, 
+		ret = recvfrom(pep->cm.sock, (char*)conn_req, 
 			       sizeof(*conn_req) + SOCK_EP_MAX_CM_DATA_SZ, 0, 
-			       &from_addr, &addr_len);
+			       (struct sockaddr *) &from_addr, &addr_len);
+		SOCK_LOG_INFO("Total received: %d\n", ret);
+
 		if (ret <= 0)
 			continue;
 		memcpy(&conn_req->from_addr, &from_addr, sizeof(struct sockaddr_in));
-		
-		SOCK_LOG_INFO("Msg received: %d\n", ret);
-		memset(&cm_entry, 0, sizeof(cm_entry));
-		user_data_sz = 0;
+		SOCK_LOG_INFO("CM msg received: %d\n", ret);
+		memset(cm_entry, 0, sizeof *cm_entry);
 
-		if (conn_req->hdr.type == SOCK_CONN_REQ) {
+		if (conn_req->hdr.type != SOCK_CONN_ACK)
+			sock_ep_cm_send_ack(&pep->cm, &from_addr, conn_req->hdr.msg_id);
+		
+		switch (conn_req->hdr.type) {
+		case SOCK_CONN_ACK:
+			SOCK_LOG_INFO("Received SOCK_CONN_ACK\n");
+			sock_ep_cm_handle_ack(&pep->cm, &conn_req->hdr);
+			break;
+
+		case SOCK_CONN_REQ:
 			SOCK_LOG_INFO("Received SOCK_CONN_REQ\n");
-			if (ret < sizeof(*conn_req) || 
-			    !sock_ep_cm_send_ack(pep->socket, &from_addr)) {
+
+			user_data_sz = ret - sizeof(*conn_req);
+			entry_sz = sizeof(*cm_entry) + user_data_sz;
+
+			if (ret < sizeof(*conn_req)) {
 				SOCK_LOG_ERROR("Invalid connection request\n");
 				break;
 			}
 			
-			cm_entry.info = sock_ep_msg_process_info(conn_req);
-			cm_entry.info->connreq = (fi_connreq_t)conn_req;
-			if (ret > sizeof(struct sock_conn_req)) {
-				user_data_sz = ret - sizeof(struct sock_conn_req);
-				memcpy(&cm_entry.data,
-				       (char *)conn_req + sizeof(struct sock_conn_req),
-					user_data_sz);
-			}
+			cm_entry->fid = &pep->pep.fid;
+			cm_entry->info = sock_ep_msg_process_info(conn_req);
+			cm_entry->info->connreq = (fi_connreq_t) conn_req;
+
+			memcpy(&cm_entry->data, &conn_req->user_data,
+			       user_data_sz);
+			conn_req = NULL;
 			
-			if (sock_eq_report_event(pep->eq, FI_CONNREQ, &cm_entry, 
-						 sizeof(cm_entry) + user_data_sz, 0)) 
+			if (sock_eq_report_event(pep->eq, FI_CONNREQ, cm_entry,
+						 entry_sz, 0))
 				SOCK_LOG_ERROR("Error in writing to EQ\n");
-		} else {
-			SOCK_LOG_ERROR("Invalid event\n");
+			break;
+
+		default:
+			SOCK_LOG_ERROR("Invalid event: %d\n", conn_req->hdr.type);
+			goto out;
 		}
-		conn_req = NULL;
 	}
 
+out:
 	if (conn_req)
 		free(conn_req);
-	close(pep->socket);
-	pep->socket = 0;
+	free(cm_entry);
+	close(pep->cm.sock);
 	return NULL;
 }
 
@@ -963,7 +960,7 @@ static int sock_pep_create_listener_thread(struct sock_pep *pep)
 	char sa_ip[INET_ADDRSTRLEN] = {0};
 	char sa_port[NI_MAXSERV] = {0};
 
-	pep->do_listen = 1;
+	pep->cm.do_listen = 1;
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -982,30 +979,33 @@ static int sock_pep_create_listener_thread(struct sock_pep *pep)
 	}
 
 	for (p=s_res; p; p=p->ai_next) {
-		pep->socket = socket(p->ai_family, p->ai_socktype,
+		pep->cm.sock = socket(p->ai_family, p->ai_socktype,
 				     p->ai_protocol);
-		if (pep->socket >= 0) {
+		if (pep->cm.sock >= 0) {
 			optval = 1;
-			setsockopt(pep->socket, SOL_SOCKET, SO_REUSEADDR, &optval, 
-				   sizeof optval);
-			if (!bind(pep->socket, s_res->ai_addr, s_res->ai_addrlen))
+			if (setsockopt(pep->cm.sock, SOL_SOCKET, SO_REUSEADDR, &optval, 
+				       sizeof optval))
+				SOCK_LOG_ERROR("setsockopt failed\n");
+			
+			if (!bind(pep->cm.sock, s_res->ai_addr, s_res->ai_addrlen))
 				break;
-			close(pep->socket);
-			pep->socket = -1;
+			close(pep->cm.sock);
+			pep->cm.sock = -1;
 		}
 	}
 
 	freeaddrinfo(s_res);
-	if (pep->socket < 0)
+	if (pep->cm.sock < 0)
 		return -FI_EIO;
 	
 	optval = 1;
-	setsockopt(pep->socket, SOL_SOCKET, SO_REUSEADDR, &optval, 
-		   sizeof optval);
+	if (setsockopt(pep->cm.sock, SOL_SOCKET, SO_REUSEADDR, &optval, 
+		       sizeof optval))
+		SOCK_LOG_ERROR("setsockopt failed\n");
 	
 	if (pep->src_addr.sin_port == 0) {
 		addr_size = sizeof(addr);
-		if (getsockname(pep->socket, (struct sockaddr*)&addr, &addr_size))
+		if (getsockname(pep->cm.sock, (struct sockaddr*)&addr, &addr_size))
 			return -FI_EINVAL;
 		pep->src_addr.sin_port = addr.sin_port;
 	}
@@ -1013,7 +1013,7 @@ static int sock_pep_create_listener_thread(struct sock_pep *pep)
 	SOCK_LOG_INFO("Listener thread bound to %s:%d\n",
 		      sa_ip, ntohs(pep->src_addr.sin_port));
 	
-	if (pthread_create(&pep->listener_thread, NULL, 
+	if (pthread_create(&pep->cm.listener_thread, NULL, 
 			   sock_pep_listener_thread, (void *)pep)) {
 		SOCK_LOG_ERROR("Couldn't create listener thread\n");
 		return -FI_EINVAL;
@@ -1034,15 +1034,10 @@ static int sock_pep_reject(struct fid_pep *pep, fi_connreq_t connreq,
 	struct sock_conn_req *req;
 	struct sockaddr_in *addr;
 	struct sock_pep *_pep;
-	struct sock_eq *_eq;
 	struct sock_conn_response *response;
 	int ret = 0;
 
 	_pep = container_of(pep, struct sock_pep, pep);
-	_eq = _pep->eq;
-	if (!_eq || paramlen > SOCK_EP_MAX_CM_DATA_SZ) 
-		return -FI_EINVAL;
-
 	req = (struct sock_conn_req *)connreq;
 	if (!req)
 		return 0;
@@ -1058,18 +1053,11 @@ static int sock_pep_reject(struct fid_pep *pep, fi_connreq_t connreq,
 	
 	addr = &req->from_addr;
 	response->hdr.type = SOCK_CONN_REJECT;
-	response->hdr.s_fid = NULL;
+	req->hdr.msg_id = _pep->cm.next_msg_id++;
 
-	if (!_pep->socket) {
-		_pep->socket = sock_ep_cm_create_socket();
-		if (!_pep->socket) {
-			ret = -FI_EIO;
-			goto out;
-		}
-	}
-	
-	if (sock_ep_cm_send_msg(_pep->socket, addr, req, 
-				sizeof(struct sock_conn_response))) {
+	if (sock_ep_cm_enqueue_msg(&_pep->cm, addr, req, 
+				   sizeof(struct sock_conn_response),
+				   &_pep->pep.fid, _pep->eq)) {
 		ret = -FI_EIO;
 		goto out;
 	}
@@ -1083,7 +1071,7 @@ out:
 
 static struct fi_ops_cm sock_pep_cm_ops = {
 	.size = sizeof(struct fi_ops_cm),
-	.getname = fi_no_getname,
+	.getname = sock_ep_cm_getname,
 	.getpeer = fi_no_getpeer,
 	.connect = fi_no_connect,
 	.listen = sock_pep_listen,
@@ -1109,42 +1097,38 @@ int sock_msg_sep(struct fid_domain *domain, struct fi_info *info,
 int sock_msg_passive_ep(struct fid_fabric *fabric, struct fi_info *info,
 			struct fid_pep **pep, void *context)
 {
-	int ret, flags;
+	int ret = 0;
 	struct sock_pep *_pep;
-	char hostname[HOST_NAME_MAX];
-	struct addrinfo sock_hints;
-	struct addrinfo *result = NULL;
+	struct addrinfo hints, *result;
 
 	if (info) {
 		ret = sock_verify_info(info);
 		if (ret) {
 			SOCK_LOG_INFO("Cannot support requested options!\n");
-			return -FI_EINVAL;
+			return ret;
 		}
 	}
 
-	_pep = (struct sock_pep*)calloc(1, sizeof(*_pep));
+	_pep = calloc(1, sizeof(*_pep));
 	if (!_pep)
 		return -FI_ENOMEM;
 
-	if(info) {
+	if (info) {
 		if (info->src_addr) {
-			memcpy(&_pep->src_addr, info->src_addr, 
-			       sizeof(struct sockaddr_in));
+			memcpy(&_pep->src_addr, info->src_addr, info->src_addrlen);
 		} else {
-			gethostname(hostname, HOST_NAME_MAX);
-			
-			memset(&sock_hints, 0, sizeof(struct addrinfo));
-			sock_hints.ai_family = AF_INET;
-			sock_hints.ai_socktype = SOCK_STREAM;
-			ret = getaddrinfo(hostname, NULL, &sock_hints, &result);
+			memset(&hints, 0, sizeof(hints));
+			hints.ai_family = AF_INET;
+			hints.ai_socktype = SOCK_STREAM;
 
-			if (ret != 0) {
-				ret = FI_EINVAL;
+			ret = getaddrinfo("localhost", NULL, &hints, &result);
+			if (ret) {
+				ret = -FI_EINVAL;
 				SOCK_LOG_INFO("getaddrinfo failed!\n");
 				goto err;
 			}
 			memcpy(&_pep->src_addr, result->ai_addr, result->ai_addrlen);
+			freeaddrinfo(result);
 		}
 		_pep->info = *info;
 	} else {
@@ -1152,17 +1136,21 @@ int sock_msg_passive_ep(struct fid_fabric *fabric, struct fi_info *info,
 		goto err;
 	}
 
-	if(socketpair(AF_UNIX, SOCK_STREAM, 0, _pep->signal_fds) < 0)
+	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, _pep->cm.signal_fds);
+	if (ret) {
+		ret = -errno;
 		goto err;
+	}
 
-	flags = fcntl(_pep->signal_fds[1], F_GETFL, 0);
-	fcntl(_pep->signal_fds[1], F_SETFL, flags | O_NONBLOCK);
+	fd_set_nonblock(_pep->cm.signal_fds[1]);
+	dlist_init(&_pep->cm.msg_list);
 
 	_pep->pep.fid.fclass = FI_CLASS_PEP;
 	_pep->pep.fid.context = context;
 	_pep->pep.fid.ops = &sock_pep_fi_ops;
 	_pep->pep.cm = &sock_pep_cm_ops;
 	_pep->pep.ops = NULL;
+	fastlock_init(&_pep->cm.lock);
 
 	_pep->sock_fab = container_of(fabric, struct sock_fabric, fab_fid);
 	*pep = &_pep->pep;

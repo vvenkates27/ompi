@@ -224,6 +224,11 @@ int fi_no_endpoint(struct fid_domain *domain, struct fi_info *info,
 {
 	return -FI_ENOSYS;
 }
+int fi_no_scalable_ep(struct fid_domain *domain, struct fi_info *info,
+		struct fid_ep **sep, void *context)
+{
+	return -FI_ENOSYS;
+}
 int fi_no_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		struct fid_cntr **cntr, void *context)
 {
@@ -248,20 +253,20 @@ int fi_no_srx_context(struct fid_domain *domain, struct fi_rx_attr *attr,
 /*
  * struct fi_ops_mr
  */
-int fi_no_mr_reg(struct fid_domain *domain, const void *buf, size_t len,
+int fi_no_mr_reg(struct fid *fid, const void *buf, size_t len,
 		uint64_t access, uint64_t offset, uint64_t requested_key,
 		uint64_t flags, struct fid_mr **mr, void *context)
 {
 	return -FI_ENOSYS;
 }
-int fi_no_mr_regv(struct fid_domain *domain, const struct iovec *iov,
+int fi_no_mr_regv(struct fid *fid, const struct iovec *iov,
 		size_t count, uint64_t access,
 		uint64_t offset, uint64_t requested_key,
 		uint64_t flags, struct fid_mr **mr, void *context)
 {
 	return -FI_ENOSYS;
 }
-int fi_no_mr_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr,
+int fi_no_mr_regattr(struct fid *fid, const struct fi_mr_attr *attr,
 		uint64_t flags, struct fid_mr **mr)
 {
 	return -FI_ENOSYS;
@@ -270,10 +275,6 @@ int fi_no_mr_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr,
 /*
  * struct fi_ops_ep
  */
-int fi_no_enable(struct fid_ep *ep)
-{
-	return -FI_ENOSYS;
-}
 ssize_t fi_no_cancel(fid_t fid, void *context)
 {
 	return -FI_ENOSYS;
@@ -388,15 +389,6 @@ ssize_t fi_no_cq_readfrom(struct fid_cq *cq, void *buf, size_t count,
 {
 	return -FI_ENOSYS;
 }
-ssize_t fi_no_cq_write(struct fid_cq *cq, const void *buf, size_t len)
-{
-	return -FI_ENOSYS;
-}
-ssize_t fi_no_cq_writeerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
-		size_t len, uint64_t flags)
-{
-	return -FI_ENOSYS;
-}
 ssize_t fi_no_cq_sread(struct fid_cq *cq, void *buf, size_t count,
 		const void *cond, int timeout)
 {
@@ -404,6 +396,10 @@ ssize_t fi_no_cq_sread(struct fid_cq *cq, void *buf, size_t count,
 }
 ssize_t fi_no_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 		fi_addr_t *src_addr, const void *cond, int timeout)
+{
+	return -FI_ENOSYS;
+}
+int fi_no_cq_signal(struct fid_cq *cq)
 {
 	return -FI_ENOSYS;
 }

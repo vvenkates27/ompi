@@ -1,5 +1,8 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2013      Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -15,7 +18,7 @@
 #include <portals4.h>
 
 #include "mpi.h"
-#include "opal/mca/mca.h"
+#include "ompi/mca/mca.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/request/request.h"
 #include "ompi/communicator/communicator.h"
@@ -42,7 +45,7 @@ struct mca_coll_portals4_component_t {
     ptl_handle_md_t md_h;
 #endif
 
-    ompi_free_list_t requests; /* request free list for the i collectives */
+    opal_free_list_t requests; /* request free list for the i collectives */
 };
 typedef struct mca_coll_portals4_component_t mca_coll_portals4_component_t;
 OMPI_MODULE_DECLSPEC extern mca_coll_portals4_component_t mca_coll_portals4_component;
