@@ -5,16 +5,16 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
  * Copyright (c) 2014      Bull SAS.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -67,10 +67,8 @@ mca_btl_portals4_get(struct mca_btl_base_module_t* btl_base,
         return OPAL_ERROR;
     }
     OPAL_OUTPUT_VERBOSE((90, opal_btl_base_framework.framework_output,
-        "mca_btl_portals4_prepare_src: Incrementing portals_outstanding_ops=%d\n", portals4_btl->portals_outstanding_ops));
-
-    OPAL_OUTPUT_VERBOSE((90, opal_btl_base_framework.framework_output,
-	"mca_btl_portals4_get frag=%p\n", (void *)frag));
+        "mca_btl_portals4_get: Incrementing portals_outstanding_ops=%d frag=%p",
+        portals4_btl->portals_outstanding_ops, (void *)frag));
 
     frag->rdma_cb.func         = cbfunc;
     frag->rdma_cb.context      = cbcontext;
@@ -101,6 +99,10 @@ mca_btl_portals4_get(struct mca_btl_base_module_t* btl_base,
     frag->match_bits = remote_handle->key;
     frag->length = md.length;
     frag->peer_proc = btl_peer->ptl_proc;
+
+    OPAL_OUTPUT_VERBOSE((90, opal_btl_base_framework.framework_output, "PtlGet start=%p length=%ld nid=%x pid=%x match_bits=%lx\n",
+        md.start, md.length, btl_peer->ptl_proc.phys.nid, btl_peer->ptl_proc.phys.pid, frag->match_bits));
+
     ret = PtlGet(frag->md_h,
                  0,
                  md.length,
@@ -117,7 +119,7 @@ mca_btl_portals4_get(struct mca_btl_base_module_t* btl_base,
         frag->md_h = PTL_INVALID_HANDLE;
         return OPAL_ERROR;
     }
-    OPAL_OUTPUT_VERBOSE((90, opal_btl_base_framework.framework_output, "PtlGet start=%p length=%ld nid=%x pid=%x match_bits=%lx\n",
+    OPAL_OUTPUT_VERBOSE((90, opal_btl_base_framework.framework_output, "SUCCESS: PtlGet start=%p length=%ld nid=%x pid=%x match_bits=%lx\n",
         md.start, md.length, btl_peer->ptl_proc.phys.nid, btl_peer->ptl_proc.phys.pid, frag->match_bits));
 
     return OPAL_SUCCESS;

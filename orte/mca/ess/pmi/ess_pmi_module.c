@@ -5,18 +5,18 @@
  * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.
- *                         All rights reserved. 
+ *                         All rights reserved.
  * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  */
@@ -27,9 +27,7 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif  /* HAVE_UNISTD_H */
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif  /* HAVE_STRING_H */
 #include <ctype.h>
 #ifdef HAVE_NETDB_H
 #include <netdb.h>
@@ -95,7 +93,7 @@ static int rte_init(void)
         error = "orte_ess_base_std_prolog";
         goto error;
     }
-    
+
     /* we don't have to call pmix.init because the pmix select did it */
 
     /****   THE FOLLOWING ARE REQUIRED VALUES   ***/
@@ -232,31 +230,27 @@ static int rte_init(void)
 
     /***  PUSH DATA FOR OTHERS TO FIND   ***/
 
-    /* if we are direct launched, then push our RML URI - there
-     * is no need to do so when launched by mpirun as all apps
-     * communicate thru their local daemon */
-    if (orte_standalone_operation) {
-        OBJ_CONSTRUCT(&vals, opal_list_t);
-        if (OPAL_SUCCESS != opal_dstore.fetch(opal_dstore_internal, &OPAL_PROC_MY_NAME,
-                                              OPAL_DSTORE_URI, &vals)) {
-            /* construct the RTE string */
-            rmluri = orte_rml.get_contact_info();
-            /* push it out for others to use */
-            OBJ_CONSTRUCT(&kvn, opal_value_t);
-            kvn.key = strdup(OPAL_DSTORE_URI);
-            kvn.type = OPAL_STRING;
-            kvn.data.string = strdup(rmluri);
-            if (ORTE_SUCCESS != (ret = opal_pmix.put(PMIX_GLOBAL, &kvn))) {
-                error = "db store uri";
-                OBJ_DESTRUCT(&kvn);
-                goto error;
-            }
+    /* push our RML URI in case others need to talk directly to us */
+    OBJ_CONSTRUCT(&vals, opal_list_t);
+    if (OPAL_SUCCESS != opal_dstore.fetch(opal_dstore_internal, &OPAL_PROC_MY_NAME,
+                                          OPAL_DSTORE_URI, &vals)) {
+        /* not already recorded, so construct the RTE string */
+        rmluri = orte_rml.get_contact_info();
+        /* push it out for others to use - this will also put it in the dstore */
+        OBJ_CONSTRUCT(&kvn, opal_value_t);
+        kvn.key = strdup(OPAL_DSTORE_URI);
+        kvn.type = OPAL_STRING;
+        kvn.data.string = strdup(rmluri);
+        if (ORTE_SUCCESS != (ret = opal_pmix.put(PMIX_GLOBAL, &kvn))) {
+            error = "db store uri";
             OBJ_DESTRUCT(&kvn);
-            free(rmluri);
+            goto error;
         }
-        OPAL_LIST_DESTRUCT(&vals);
+        OBJ_DESTRUCT(&kvn);
+        free(rmluri);
     }
-    
+    OPAL_LIST_DESTRUCT(&vals);
+
     /* push our hostname so others can find us, if they need to */
     OBJ_CONSTRUCT(&kvn, opal_value_t);
     kvn.key = strdup(OPAL_DSTORE_HOSTNAME);
@@ -351,13 +345,13 @@ static int rte_finalize(void)
         ORTE_ERROR_LOG(ret);
         return ret;
     }
-    
+
     /* mark us as finalized */
     if (NULL != opal_pmix.finalize) {
         opal_pmix.finalize();
         (void) mca_base_framework_close(&opal_pmix_base_framework);
     }
-        
+
     return ORTE_SUCCESS;
 }
 

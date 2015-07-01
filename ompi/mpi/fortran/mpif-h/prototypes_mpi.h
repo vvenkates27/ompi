@@ -5,19 +5,19 @@
  * Copyright (c) 2004-2013 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2013 Inria.  All rights reserved.
  * Copyright (c) 2011-2013 Universite Bordeaux 1
- * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2013-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  * This file prototypes all MPI fortran functions in all four fortran
@@ -85,6 +85,8 @@ PN2(void, MPI_Add_error_class, mpi_add_error_class, MPI_ADD_ERROR_CLASS, (MPI_Fi
 PN2(void, MPI_Add_error_code, mpi_add_error_code, MPI_ADD_ERROR_CODE, (MPI_Fint *errorclass, MPI_Fint *errorcode, MPI_Fint *ierr));
 PN2(void, MPI_Add_error_string, mpi_add_error_string, MPI_ADD_ERROR_STRING, (MPI_Fint *errorcode, char *string, MPI_Fint *ierr, int l));
 PN2(void, MPI_Address, mpi_address, MPI_ADDRESS, (char *location, MPI_Fint *address, MPI_Fint *ierr));
+PN2(MPI_Aint, MPI_Aint_add, mpi_aint_add, MPI_AINT_ADD, (MPI_Aint *base, MPI_Aint *diff));
+PN2(MPI_Aint, MPI_Aint_diff, mpi_aint_diff, MPI_AINT_DIFF, (MPI_Aint *addr1, MPI_Aint *addr2));
 PN2(void, MPI_Allgather, mpi_allgather, MPI_ALLGATHER, (char *sendbuf, MPI_Fint *sendcount, MPI_Fint *sendtype, char *recvbuf, MPI_Fint *recvcount, MPI_Fint *recvtype, MPI_Fint *comm, MPI_Fint *ierr));
 PN2(void, MPI_Allgatherv, mpi_allgatherv, MPI_ALLGATHERV, (char *sendbuf, MPI_Fint *sendcount, MPI_Fint *sendtype, char *recvbuf, MPI_Fint *recvcounts, MPI_Fint *displs, MPI_Fint *recvtype, MPI_Fint *comm, MPI_Fint *ierr));
 PN2(void, MPI_Alloc_mem, mpi_alloc_mem, MPI_ALLOC_MEM, (MPI_Aint *size, MPI_Fint *info, char *baseptr, MPI_Fint *ierr));
@@ -405,12 +407,15 @@ PN2(void, MPI_Win_allocate, mpi_win_allocate, MPI_WIN_ALLOCATE, (MPI_Aint *size,
 PN2(void, MPI_Win_allocate_cptr, mpi_win_allocate_cptr, MPI_WIN_ALLOCATE_CPTR, (MPI_Aint *size, MPI_Fint *disp_unit, MPI_Fint *info, MPI_Fint *comm, char *baseptr, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_allocate_shared, mpi_win_allocate_shared, MPI_WIN_ALLOCATE_SHARED, (MPI_Aint *size, MPI_Fint *disp_unit, MPI_Fint *info, MPI_Fint *comm, char *baseptr, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_allocate_shared_cptr, mpi_win_allocate_shared_cptr, MPI_WIN_ALLOCATE_SHARED_CPTR, (MPI_Aint *size, MPI_Fint *disp_unit, MPI_Fint *info, MPI_Fint *comm, char *baseptr, MPI_Fint *win, MPI_Fint *ierr));
+PN2(void, MPI_Win_attach, mpi_win_attach, MPI_WIN_ATTACH, (MPI_Fint *win, char *base, MPI_Aint *size, MPI_Fint *ierr));
 PN2(void, MPI_Win_call_errhandler, mpi_win_call_errhandler, MPI_WIN_CALL_ERRHANDLER, (MPI_Fint *win, MPI_Fint *errorcode, MPI_Fint *ierr));
 PN2(void, MPI_Win_complete, mpi_win_complete, MPI_WIN_COMPLETE, (MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_create, mpi_win_create, MPI_WIN_CREATE, (char *base, MPI_Aint *size, MPI_Fint *disp_unit, MPI_Fint *info, MPI_Fint *comm, MPI_Fint *win, MPI_Fint *ierr));
+PN2(void, MPI_Win_create_dynamic, mpi_win_create_dynamic, MPI_WIN_CREATE_DYNAMIC, (MPI_Fint *info, MPI_Fint *comm, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_create_errhandler, mpi_win_create_errhandler, MPI_WIN_CREATE_ERRHANDLER, (ompi_errhandler_fortran_handler_fn_t* function, MPI_Fint *errhandler, MPI_Fint *ierr));
 PN2(void, MPI_Win_create_keyval, mpi_win_create_keyval, MPI_WIN_CREATE_KEYVAL, (ompi_mpi2_fortran_copy_attr_function* win_copy_attr_fn, ompi_mpi2_fortran_delete_attr_function* win_delete_attr_fn, MPI_Fint *win_keyval, MPI_Aint *extra_state, MPI_Fint *ierr));
 PN2(void, MPI_Win_delete_attr, mpi_win_delete_attr, MPI_WIN_DELETE_ATTR, (MPI_Fint *win, MPI_Fint *win_keyval, MPI_Fint *ierr));
+PN2(void, MPI_Win_detach, mpi_win_detach, MPI_WIN_DETACH, (MPI_Fint *win, char *base, MPI_Fint *ierr));
 PN2(void, MPI_Win_fence, mpi_win_fence, MPI_WIN_FENCE, (MPI_Fint *assert, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_flush, mpi_win_flush, MPI_WIN_FLUSH, (MPI_Fint *rank, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_flush_all, mpi_win_flush_all, MPI_WIN_FLUSH_ALL, (MPI_Fint *win, MPI_Fint *ierr));
@@ -421,12 +426,14 @@ PN2(void, MPI_Win_free_keyval, mpi_win_free_keyval, MPI_WIN_FREE_KEYVAL, (MPI_Fi
 PN2(void, MPI_Win_get_attr, mpi_win_get_attr, MPI_WIN_GET_ATTR, (MPI_Fint *win, MPI_Fint *win_keyval, MPI_Aint *attribute_val, ompi_fortran_logical_t *flag, MPI_Fint *ierr));
 PN2(void, MPI_Win_get_errhandler, mpi_win_get_errhandler, MPI_WIN_GET_ERRHANDLER, (MPI_Fint *win, MPI_Fint *errhandler, MPI_Fint *ierr));
 PN2(void, MPI_Win_get_group, mpi_win_get_group, MPI_WIN_GET_GROUP, (MPI_Fint *win, MPI_Fint *group, MPI_Fint *ierr));
+PN2(void, MPI_Win_get_info, mpi_win_get_info, MPI_WIN_GET_INFO, (MPI_Fint *win, MPI_Fint *info, MPI_Fint *ierr));
 PN2(void, MPI_Win_get_name, mpi_win_get_name, MPI_WIN_GET_NAME, (MPI_Fint *win, char *win_name, MPI_Fint *resultlen, MPI_Fint *ierr, int name_len));
 PN2(void, MPI_Win_lock, mpi_win_lock, MPI_WIN_LOCK, (MPI_Fint *lock_type, MPI_Fint *rank, MPI_Fint *assert, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_lock_all, mpi_win_lock_all, MPI_WIN_LOCK_ALL, (MPI_Fint *assert, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_post, mpi_win_post, MPI_WIN_POST, (MPI_Fint *group, MPI_Fint *assert, MPI_Fint *win, MPI_Fint *ierr));
 PN2(void, MPI_Win_set_attr, mpi_win_set_attr, MPI_WIN_SET_ATTR, (MPI_Fint *win, MPI_Fint *win_keyval, MPI_Aint *attribute_val, MPI_Fint *ierr));
 PN2(void, MPI_Win_set_errhandler, mpi_win_set_errhandler, MPI_WIN_SET_ERRHANDLER, (MPI_Fint *win, MPI_Fint *errhandler, MPI_Fint *ierr));
+PN2(void, MPI_Win_set_info, mpi_win_set_info, MPI_WIN_SET_INFO, (MPI_Fint *win, MPI_Fint *info, MPI_Fint *ierr));
 PN2(void, MPI_Win_set_name, mpi_win_set_name, MPI_WIN_SET_NAME, (MPI_Fint *win, char *win_name, MPI_Fint *ierr, int name_len));
 PN2(void, MPI_Win_shared_query, mpi_win_shared_query, MPI_WIN_SHARED_QUERY, (MPI_Fint *win, MPI_Fint *rank, MPI_Aint *size, MPI_Fint *disp_unit, char *baseptr, MPI_Fint *ierr));
 PN2(void, MPI_Win_shared_query_cptr, mpi_win_shared_query_cptr, MPI_WIN_SHARED_QUERY_CPTR, (MPI_Fint *win, MPI_Fint *rank, MPI_Aint *size, MPI_Fint *disp_unit, char *baseptr, MPI_Fint *ierr));

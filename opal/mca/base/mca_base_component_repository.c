@@ -6,17 +6,19 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -91,6 +93,7 @@ static int process_repository_item (const char *filename, void *data)
                   STRINGIFY(MCA_BASE_MAX_COMPONENT_NAME_LEN) "s", type, name);
     if (0 > ret) {
         /* does not patch the expected template. skip */
+        free(base);
         return OPAL_SUCCESS;
     }
 
@@ -125,6 +128,7 @@ static int process_repository_item (const char *filename, void *data)
 
     ri = OBJ_NEW(mca_base_component_repository_item_t);
     if (NULL == ri) {
+        free (base);
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
 
@@ -227,14 +231,14 @@ int mca_base_component_repository_init(void)
     OBJ_CONSTRUCT(&mca_base_component_repository, opal_hash_table_t);
     ret = opal_hash_table_init (&mca_base_component_repository, 128);
     if (OPAL_SUCCESS != ret) {
-        mca_base_framework_close (&opal_dl_base_framework);
+        (void) mca_base_framework_close (&opal_dl_base_framework);
         return ret;
     }
 
     ret = mca_base_component_repository_add (mca_base_component_path);
     if (OPAL_SUCCESS != ret) {
         OBJ_DESTRUCT(&mca_base_component_repository);
-        mca_base_framework_close (&opal_dl_base_framework);
+        (void) mca_base_framework_close (&opal_dl_base_framework);
         return ret;
     }
 #endif
@@ -258,6 +262,7 @@ int mca_base_component_repository_get_components (mca_base_framework_t *framewor
     return OPAL_ERR_NOT_FOUND;
 }
 
+#if OPAL_HAVE_DL_SUPPORT
 static void mca_base_component_repository_release_internal (mca_base_component_repository_item_t *ri) {
     int group_id;
 
@@ -273,6 +278,7 @@ static void mca_base_component_repository_release_internal (mca_base_component_r
         ri->ri_dlhandle = NULL;
     }
 }
+#endif
 
 void mca_base_component_repository_release(const mca_base_component_t *component)
 {
@@ -325,6 +331,9 @@ int mca_base_component_repository_open (mca_base_framework_t *framework,
             return OPAL_ERR_BAD_PARAM;
         }
     }
+
+    /* silence coverity issue (invalid free) */
+    mitem = NULL;
 
     if (NULL != ri->ri_dlhandle) {
         opal_output_verbose(40, 0, "mca_base_component_repository_open: already loaded. returning cached component");

@@ -5,16 +5,18 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.
  *                         All rights reserved
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -40,7 +42,7 @@
 /*
  * Global variables
  */
-opal_list_t mca_rcache_base_modules;
+opal_list_t mca_rcache_base_modules = {{0}};
 
 
 OBJ_CLASS_INSTANCE(mca_rcache_base_selected_module_t, opal_list_item_t, NULL, NULL);
@@ -53,7 +55,7 @@ static int mca_rcache_base_close(void)
   /* Finalize all the rcache components and free their list items */
 
   for (item = opal_list_remove_first(&mca_rcache_base_modules);
-       NULL != item; 
+       NULL != item;
        item = opal_list_remove_first(&mca_rcache_base_modules)) {
     sm = (mca_rcache_base_selected_module_t *) item;
 

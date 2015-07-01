@@ -14,7 +14,7 @@
  * Copyright (c) 2006      Voltaire. All rights reserved.
  * Copyright (c) 2007      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
- * Copyright (c) 2012      NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2012-2015 NVIDIA Corporation.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
  *                         reserved.
  *
@@ -44,12 +44,12 @@
 
 /**
  * Called when the registration free list is created.  An event is created
- * for each entry. 
+ * for each entry.
  */
 static void mca_mpool_gpusm_registration_constructor( mca_mpool_gpusm_registration_t *item )
 {
-    mca_common_cuda_construct_event_and_handle((uint64_t **)&item->event,
-                                               (void **)&item->evtHandle);
+    mca_common_cuda_construct_event_and_handle(&item->event,
+                                               (void *)&item->evtHandle);
 }
 
 /**
@@ -57,10 +57,10 @@ static void mca_mpool_gpusm_registration_constructor( mca_mpool_gpusm_registrati
  */
 static void mca_mpool_gpusm_registration_destructor( mca_mpool_gpusm_registration_t *item )
 {
-    mca_common_cuda_destruct_event((uint64_t *)item->event);
+    mca_common_cuda_destruct_event(item->event);
 }
 
-OBJ_CLASS_INSTANCE(mca_mpool_gpusm_registration_t, mca_mpool_base_registration_t, 
+OBJ_CLASS_INSTANCE(mca_mpool_gpusm_registration_t, mca_mpool_base_registration_t,
                    mca_mpool_gpusm_registration_constructor,
                    mca_mpool_gpusm_registration_destructor);
 
@@ -95,7 +95,7 @@ void mca_mpool_gpusm_module_init(mca_mpool_gpusm_module_t* mpool)
      * some CUDA specific activities that need to be done. */
     opal_free_list_init (&mpool->reg_list, mpool->resources.sizeof_reg,
             opal_cache_line_size,
-            OBJ_CLASS(mca_mpool_gpusm_registration_t), 
+            OBJ_CLASS(mca_mpool_gpusm_registration_t),
             0,opal_cache_line_size,
             0, -1, 64, NULL, 0, NULL, NULL, NULL);
 
@@ -176,7 +176,7 @@ int mca_mpool_gpusm_deregister(struct mca_mpool_base_module_t *mpool,
 }
 
 /**
- * Free up the resources.  
+ * Free up the resources.
  */
 void mca_mpool_gpusm_finalize(struct mca_mpool_base_module_t *mpool)
 {

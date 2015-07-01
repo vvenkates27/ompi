@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -14,9 +14,9 @@
  *                         All rights reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -64,7 +64,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
      * ALLOWED TO CALL RMAPS INDEPENDENTLY. ONLY THE PLM CAN
      * DO SO, AND ALL PLM COMMANDS ARE RELAYED TO HNP
      */
-    
+
     opal_output_verbose(5, orte_rmaps_base_framework.framework_output,
                         "mca:rmaps: mapping job %s",
                         ORTE_JOBID_PRINT(jdata->jobid));
@@ -76,7 +76,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
      * NULL MAP FIELD
      * LONE EXCEPTION - WE COPY DISPLAY MAP ACROSS IF THEY
      * DIDN'T SET IT
-     */        
+     */
     if (NULL == jdata->map) {
         opal_output_verbose(5, orte_rmaps_base_framework.framework_output,
                             "mca:rmaps: creating new map for job %s",
@@ -247,9 +247,32 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
         if (OPAL_BINDING_POLICY_IS_SET(opal_hwloc_binding_policy)) {
             jdata->map->binding = opal_hwloc_binding_policy;
         } else {
-            /* if nothing was specified, then we default to a policy
-             * based on number of procs and cpus_per_rank */
-            if (nprocs <= 2) {
+            orte_mapping_policy_t mpol;
+            mpol = ORTE_GET_MAPPING_POLICY(orte_rmaps_base.mapping);
+            /* if the user explicitly mapped-by some object, then we default
+             * to binding to that object */
+            if (ORTE_MAPPING_POLICY_IS_SET(jdata->map->mapping) &&
+                ORTE_MAPPING_BYBOARD < mpol && mpol < ORTE_MAPPING_BYSLOT) {
+                if (ORTE_MAPPING_BYHWTHREAD == mpol) {
+                    OPAL_SET_DEFAULT_BINDING_POLICY(jdata->map->binding, OPAL_BIND_TO_HWTHREAD);
+                } else if (ORTE_MAPPING_BYCORE == mpol) {
+                    OPAL_SET_DEFAULT_BINDING_POLICY(jdata->map->binding, OPAL_BIND_TO_CORE);
+                } else if (ORTE_MAPPING_BYL1CACHE == mpol) {
+                    OPAL_SET_DEFAULT_BINDING_POLICY(jdata->map->binding, OPAL_BIND_TO_L1CACHE);
+                } else if (ORTE_MAPPING_BYL2CACHE == mpol) {
+                    OPAL_SET_DEFAULT_BINDING_POLICY(jdata->map->binding, OPAL_BIND_TO_L2CACHE);
+                } else if (ORTE_MAPPING_BYL3CACHE == mpol) {
+                    OPAL_SET_DEFAULT_BINDING_POLICY(jdata->map->binding, OPAL_BIND_TO_L3CACHE);
+                } else if (ORTE_MAPPING_BYSOCKET == mpol) {
+                    OPAL_SET_DEFAULT_BINDING_POLICY(jdata->map->binding, OPAL_BIND_TO_SOCKET);
+                } else if (ORTE_MAPPING_BYNUMA == mpol) {
+                    OPAL_SET_DEFAULT_BINDING_POLICY(jdata->map->binding, OPAL_BIND_TO_NUMA);
+                }
+            } else if (ORTE_MAPPING_BYNODE == mpol || ORTE_MAPPING_BYBOARD == mpol) {
+                jdata->map->binding = OPAL_BIND_TO_NONE;
+            } else if (nprocs <= 2) {
+                /* if nothing was specified, then we default to a policy
+                 * based on number of procs and cpus_per_rank */
                 if (1 < orte_rmaps_base.cpus_per_rank) {
                     /* assigning multiple cpus to a rank implies threading,
                      * so we only bind to the NUMA level */
@@ -275,7 +298,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
             }
         }
     }
-    
+
     /* if we are not going to launch, then we need to set any
      * undefined topologies to match our own so the mapper
      * can operate
@@ -356,7 +379,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
         OBJ_RELEASE(caddy);
         return;
     }
-    
+
 #if OPAL_HAVE_HWLOC
     /* compute and save bindings */
     if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_bindings(jdata))) {
@@ -366,7 +389,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
         return;
     }
 #endif
-    
+
     /* set the offset so shared memory components can potentially
      * connect to any spawned jobs
      */
@@ -386,9 +409,10 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
      */
     if (jdata->map->display_map) {
         char *output=NULL;
-        int i, j;
+        int i, j, cnt;
         orte_node_t *node;
         orte_proc_t *proc;
+        char tmp1[1024];
 
         if (orte_display_diffable_output) {
             /* intended solely to test mapping methods, this output
@@ -398,40 +422,38 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
              * the output a line at a time here
              */
             /* display just the procs in a diffable format */
-            opal_output(orte_clean_output, "<map>\n\t<jobid=%s>\n\t<offset=%s>",
-                        ORTE_JOBID_PRINT(jdata->jobid), ORTE_VPID_PRINT(jdata->offset));
+            opal_output(orte_clean_output, "<map>\n");
             fflush(stderr);
             /* loop through nodes */
+            cnt = 0;
             for (i=0; i < jdata->map->nodes->size; i++) {
                 if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(jdata->map->nodes, i))) {
                     continue;
                 }
-                opal_output(orte_clean_output, "\t<host name=%s>", (NULL == node->name) ? "UNKNOWN" : node->name);
+                opal_output(orte_clean_output, "\t<host num=%d>", cnt);
                 fflush(stderr);
+                cnt++;
                 for (j=0; j < node->procs->size; j++) {
                     if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(node->procs, j))) {
                         continue;
                     }
 #if OPAL_HAVE_HWLOC
                     {
-                        char locale[64];
-                        hwloc_obj_t loc;
-                        char *cpu_bitmap;
+                        hwloc_obj_t bd=NULL;;
 
-                        loc = NULL;
-                        if (orte_get_attribute(&proc->attributes, ORTE_PROC_HWLOC_LOCALE, (void**)&loc, OPAL_PTR)) {
-                            hwloc_bitmap_list_snprintf(locale, 64, loc->cpuset);
+                        memset(tmp1, 0, 1024);
+                        orte_get_attribute(&proc->attributes, ORTE_PROC_HWLOC_BOUND, (void**)&bd, OPAL_PTR);
+                        if (NULL == bd) {
+                            (void)strncpy(tmp1, "UNBOUND", strlen("UNBOUND"));
+                        } else {
+                            if (OPAL_ERR_NOT_BOUND == opal_hwloc_base_cset2mapstr(tmp1, sizeof(tmp1), node->topology, bd->cpuset)) {
+                                (void)strncpy(tmp1, "UNBOUND", strlen("UNBOUND"));
+                            }
                         }
-                        cpu_bitmap = NULL;
-                        orte_get_attribute(&proc->attributes, ORTE_PROC_CPU_BITMAP, (void**)&cpu_bitmap, OPAL_STRING);
-                        opal_output(orte_clean_output, "\t\t<process rank=%s app_idx=%ld local_rank=%lu node_rank=%lu locale=%s binding=%s>",
+                        opal_output(orte_clean_output, "\t\t<process rank=%s app_idx=%ld local_rank=%lu node_rank=%lu binding=%s>",
                                     ORTE_VPID_PRINT(proc->name.vpid),  (long)proc->app_idx,
                                     (unsigned long)proc->local_rank,
-                                    (unsigned long)proc->node_rank, locale,
-                                    (NULL == cpu_bitmap) ? "NULL" : cpu_bitmap);
-                        if (NULL != cpu_bitmap) {
-                            free(cpu_bitmap);
-                        }
+                                    (unsigned long)proc->node_rank, tmp1);
                     }
 #else
                     opal_output(orte_clean_output, "\t\t<process rank=%s app_idx=%ld local_rank=%lu node_rank=%lu>",
@@ -444,6 +466,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
                 opal_output(orte_clean_output, "\t</host>");
                 fflush(stderr);
             }
+
 #if OPAL_HAVE_HWLOC
             {
                 opal_hwloc_locality_t locality;

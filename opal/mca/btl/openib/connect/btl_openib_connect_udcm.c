@@ -3,7 +3,7 @@
  * Copyright (c) 2007-2013 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2011-2014 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2011-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
@@ -11,9 +11,9 @@
  * Copyright (c) 2014      Bull SAS.  All rights reserved.
  *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -287,7 +287,7 @@ static OBJ_CLASS_INSTANCE(udcm_message_sent_t, opal_list_item_t,
 /*--------------------------------------------------------------------*/
 
 static void udcm_component_register(void);
-static int udcm_component_query(mca_btl_openib_module_t *btl, 
+static int udcm_component_query(mca_btl_openib_module_t *btl,
                                 opal_btl_openib_connect_base_module_t **cpc);
 static int udcm_component_finalize(void);
 
@@ -426,7 +426,7 @@ static void udcm_component_register(void)
                                            &udcm_max_retry);
 }
 
-static int udcm_component_query(mca_btl_openib_module_t *btl, 
+static int udcm_component_query(mca_btl_openib_module_t *btl,
                                 opal_btl_openib_connect_base_module_t **cpc)
 {
     udcm_module_t *m = NULL;
@@ -492,8 +492,8 @@ static int udcm_component_query(mca_btl_openib_module_t *btl,
                      btl->port_num));
     } else {
         BTL_VERBOSE(("unavailable for use on %s:%d; fatal error %d (%s)",
-                     ibv_get_device_name(btl->device->ib_dev), 
-                     btl->port_num, rc, 
+                     ibv_get_device_name(btl->device->ib_dev),
+                     btl->port_num, rc,
                      opal_strerror(rc)));
     }
 
@@ -605,7 +605,7 @@ static int udcm_endpoint_init_self (struct mca_btl_base_endpoint_t *lcl_ep)
 
 static int udcm_endpoint_init (struct mca_btl_base_endpoint_t *lcl_ep)
 {
-    udcm_endpoint_t *udep = lcl_ep->endpoint_local_cpc_data = 
+    udcm_endpoint_t *udep = lcl_ep->endpoint_local_cpc_data =
         calloc(1, sizeof(udcm_endpoint_t));
     if (NULL == udep) {
         BTL_ERROR(("malloc failed!"));
@@ -630,7 +630,7 @@ static int udcm_endpoint_init (struct mca_btl_base_endpoint_t *lcl_ep)
 static int udcm_endpoint_finalize(struct mca_btl_base_endpoint_t *lcl_ep)
 {
     udcm_endpoint_t *udep = UDCM_ENDPOINT_DATA(lcl_ep);
-    
+
     /* Free the stuff we allocated in udcm_endpoint_init */
     if (NULL != udep) {
         if (udep->ah) {
@@ -652,6 +652,13 @@ static int udcm_module_init (udcm_module_t *m, mca_btl_openib_module_t *btl)
 
     BTL_VERBOSE(("created cpc module %p for btl %p",
                  (void*)m, (void*)btl));
+
+    OBJ_CONSTRUCT(&m->cm_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&m->cm_send_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&m->cm_recv_msg_queue, opal_list_t);
+    OBJ_CONSTRUCT(&m->cm_recv_msg_queue_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&m->flying_messages, opal_list_t);
+    OBJ_CONSTRUCT(&m->cm_timeout_lock, opal_mutex_t);
 
     m->btl = btl;
 
@@ -725,15 +732,6 @@ static int udcm_module_init (udcm_module_t *m, mca_btl_openib_module_t *btl)
                                udcm_cq_event_dispatch, m);
     m->channel_monitored = true;
 
-    OBJ_CONSTRUCT(&m->cm_lock, opal_mutex_t);
-    OBJ_CONSTRUCT(&m->cm_send_lock, opal_mutex_t);
-    OBJ_CONSTRUCT(&m->cm_recv_msg_queue, opal_list_t);
-    OBJ_CONSTRUCT(&m->cm_recv_msg_queue_lock, opal_mutex_t);
-
-    OBJ_CONSTRUCT(&m->flying_messages, opal_list_t);
-
-    OBJ_CONSTRUCT(&m->cm_timeout_lock, opal_mutex_t);
-
     udcm_timeout_tv.tv_sec  = udcm_timeout / 1000000;
     udcm_timeout_tv.tv_usec = udcm_timeout - 1000000 *
         udcm_timeout_tv.tv_sec;
@@ -758,7 +756,7 @@ udcm_module_start_connect(opal_btl_openib_connect_base_module_t *cpc,
     udcm_endpoint_t *udep = UDCM_ENDPOINT_DATA(lcl_ep);
     int rc = OPAL_SUCCESS;
 
-    BTL_VERBOSE(("endpoint %p (lid %d, ep index %d)", 
+    BTL_VERBOSE(("endpoint %p (lid %d, ep index %d)",
                  (void*)lcl_ep, lcl_ep->endpoint_btl->port_info.lid,
                  lcl_ep->index));
 
@@ -917,7 +915,7 @@ static int udcm_module_create_listen_qp (udcm_module_t *m)
     init_attr.cap.max_recv_wr = udcm_recv_count;
     init_attr.cap.max_send_wr = 1;
 
-    qp = ibv_create_qp(m->btl->device->ib_pd, &init_attr); 
+    qp = ibv_create_qp(m->btl->device->ib_pd, &init_attr);
     if (NULL == qp) {
         BTL_VERBOSE(("could not create UD listen queue pair"));
         return OPAL_ERROR;
@@ -936,7 +934,7 @@ static int udcm_module_create_listen_qp (udcm_module_t *m)
         BTL_ERROR(("error modifying qp to INIT errno says %s",
                    strerror(errno)));
         return OPAL_ERROR;
-    } 
+    }
 
     /* Move listen QP to RTR */
     attr.qp_state = IBV_QPS_RTR;
@@ -1333,7 +1331,7 @@ static int udcm_rc_qp_create_one(udcm_module_t *m, mca_btl_base_endpoint_t* lcl_
     init_attr.send_cq = m->btl->device->ib_cq[BTL_OPENIB_LP_CQ];
     init_attr.recv_cq = m->btl->device->ib_cq[qp_cq_prio(qp)];
     init_attr.srq     = srq;
-    init_attr.cap.max_inline_data = req_inline = 
+    init_attr.cap.max_inline_data = req_inline =
         max_inline_size(qp, m->btl->device);
     init_attr.cap.max_send_sge = 1;
     init_attr.cap.max_recv_sge = 1; /* we do not use SG list */
@@ -1425,7 +1423,7 @@ static int udcm_rc_qp_create_all (mca_btl_base_endpoint_t *lcl_ep)
         pp_qp_num = 1;
     }
 
-    for (qp = 0; qp < mca_btl_openib_component.num_qps; ++qp) { 
+    for (qp = 0; qp < mca_btl_openib_component.num_qps; ++qp) {
         struct ibv_srq *srq = NULL;
         uint32_t max_recv_wr, max_send_wr;
         int32_t rd_rsv, rd_num_credits;
@@ -1439,7 +1437,7 @@ static int udcm_rc_qp_create_all (mca_btl_base_endpoint_t *lcl_ep)
         }
 
         if (BTL_OPENIB_QP_TYPE_PP(qp)) {
-            max_recv_wr = mca_btl_openib_component.qp_infos[qp].rd_num + 
+            max_recv_wr = mca_btl_openib_component.qp_infos[qp].rd_num +
                 rd_rsv;
             max_send_wr = mca_btl_openib_component.qp_infos[qp].rd_num +
                 rd_num_credits;
@@ -1806,11 +1804,11 @@ static int udcm_handle_connect(mca_btl_openib_endpoint_t *lcl_ep,
     udcm_endpoint_t *udep = UDCM_ENDPOINT_DATA(lcl_ep);
     int rc = OPAL_ERROR;
 
-    do {
-        if (NULL == udep) {
-            break;
-        }
+    if (NULL == udep) {
+        return OPAL_ERROR;
+    }
 
+    do {
         opal_mutex_lock (&udep->udep_lock);
 
         if (true == udep->recv_req) {

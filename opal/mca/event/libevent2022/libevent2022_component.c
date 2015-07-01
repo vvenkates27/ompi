@@ -1,13 +1,13 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved. 
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC.  All rights reserved.
  * Copyright (c) 2015      Intel, Inc. All rights reserved.
  *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  * These symbols are in a file by themselves to provide nice linker
@@ -121,11 +121,11 @@ const opal_event_component_t mca_event_libevent2022_component = {
 };
 
 static int libevent2022_register (void)
-{ 
+{
     const struct eventop** _eventop = eventops;
     char available_eventops[1024] = "none";
     char *help_msg = NULL;
-    int ret, len = 1024;
+    int ret;
 
     /* Retrieve the upper level specified event system, if any.
      * Default to select() on OS X and poll() everywhere else because
@@ -144,7 +144,7 @@ static int libevent2022_register (void)
      * won't be used with libevent.  For example, we currently have
      * ompi_mpi_init() set to use "all" (to include epoll and friends)
      * so that the TCP BTL can be a bit more scalable -- because we
-     * *know* that MPI apps don't use pty's with libevent.  
+     * *know* that MPI apps don't use pty's with libevent.
      * Note that other tools explicitly *do* use pty's with libevent:
      *
      * - orted
@@ -153,17 +153,15 @@ static int libevent2022_register (void)
      */
 
     if (NULL != (*_eventop)) {
-        available_eventops[0] = '\0';
-    }
+        const int len = sizeof (available_eventops);
+        int cur_len = snprintf (available_eventops, len, "%s", (*(_eventop++))->name);
 
-    while( NULL != (*_eventop) ) {
-        if( available_eventops[0] != '\0' ) {
-            (void) strncat (available_eventops, ", ", len);
+        for (int i = 1 ; eventops[i] && cur_len < len ; ++i) {
+            cur_len += snprintf (available_eventops + cur_len, len - cur_len, ", %s",
+                                 eventops[i]->name);
         }
-        (void) strncat (available_eventops, (*_eventop)->name,
-                        len);
-        _eventop++;  /* go to the next available eventop */
-        len = 1024 - strlen(available_eventops);
+        /* ensure the available_eventops string is always NULL-terminated  */
+        available_eventops[len - 1] = '\0';
     }
 
 #ifdef __APPLE__
@@ -172,7 +170,7 @@ static int libevent2022_register (void)
     event_module_include = "poll";
 #endif
 
-    asprintf( &help_msg, 
+    asprintf( &help_msg,
               "Comma-delimited list of libevent subsystems "
               "to use (%s -- available on your platform)",
               available_eventops );
@@ -199,6 +197,6 @@ static int libevent2022_register (void)
 }
 
 static int libevent2022_open(void)
-{    
+{
     return OPAL_SUCCESS;
 }

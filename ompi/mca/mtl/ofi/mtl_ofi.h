@@ -15,7 +15,6 @@
 #include "ompi/mca/mtl/mtl.h"
 #include "ompi/mca/mtl/base/base.h"
 #include "opal/datatype/opal_convertor.h"
-#include "opal/mca/pmix/pmix.h"
 
 #include <rdma/fabric.h>
 #include <rdma/fi_cm.h>
@@ -38,6 +37,7 @@
 #include "mtl_ofi_types.h"
 #include "mtl_ofi_request.h"
 #include "mtl_ofi_endpoint.h"
+#include "mtl_ofi_compat.h"
 
 BEGIN_C_DECLS
 
@@ -56,8 +56,8 @@ __opal_attribute_always_inline__ static inline int
 ompi_mtl_ofi_progress(void)
 {
     int ret, count = 0;
-    struct fi_cq_tagged_entry wc;
-    struct fi_cq_err_entry error;
+    struct fi_cq_tagged_entry wc = { 0 };
+    struct fi_cq_err_entry error = { 0 };
     ompi_mtl_ofi_request_t *ofi_req = NULL;
 
     /**
@@ -66,7 +66,6 @@ ompi_mtl_ofi_progress(void)
      * Call the request's callback.
      */
     while (true) {
-        memset(&wc, 0, sizeof(wc));
         ret = fi_cq_read(ompi_mtl_ofi.cq, (void *)&wc, 1);
         if (ret > 0) {
             count++;
@@ -86,7 +85,6 @@ ompi_mtl_ofi_progress(void)
              * An error occured and is being reported via the CQ.
              * Read the error and forward it to the upper layer.
              */
-            memset(&error, 0, sizeof(error));
             ret = fi_cq_readerr(ompi_mtl_ofi.cq,
                                 &error,
                                 0);
@@ -126,11 +124,6 @@ ompi_mtl_ofi_finalize(struct mca_mtl_base_module_t *mtl)
      * Close all the OFI objects
      */
     if (fi_close((fid_t)ompi_mtl_ofi.ep)) {
-        opal_output(ompi_mtl_base_framework.framework_output,
-                "fi_close failed: %s", strerror(errno));
-        abort();
-    }
-    if (fi_close((fid_t)ompi_mtl_ofi.mr)) {
         opal_output(ompi_mtl_base_framework.framework_output,
                 "fi_close failed: %s", strerror(errno));
         abort();
@@ -189,7 +182,7 @@ ompi_mtl_ofi_send_error_callback(struct fi_cq_err_entry *error,
                                  ompi_mtl_ofi_request_t *ofi_req)
 {
     switch(error->err) {
-        case FI_EMSGSIZE:
+        case FI_ETRUNC:
             ofi_req->status.MPI_ERROR = MPI_ERR_TRUNCATE;
             break;
         default:
@@ -289,7 +282,7 @@ ompi_mtl_ofi_send_start(struct mca_mtl_base_module_t *mtl,
         ret_length = fi_trecv(ompi_mtl_ofi.ep,
                               NULL,
                               0,
-                              ompi_mtl_ofi.mr,
+                              NULL,
                               endpoint->peer_fiaddr,
                               match_bits | MTL_OFI_SYNC_SEND_ACK,
                               0, /* Exact match, no ignore bits */
@@ -307,19 +300,35 @@ ompi_mtl_ofi_send_start(struct mca_mtl_base_module_t *mtl,
                               comm->c_my_rank, tag, 0);
     }
 
-    ret_length = fi_tsend(ompi_mtl_ofi.ep,
-                          start,
-                          length,
-                          ompi_mtl_ofi.mr,
-                          endpoint->peer_fiaddr,
-                          match_bits,
-                          (void *) &ofi_req->ctx);
+    if (ompi_mtl_ofi.max_inject_size >= length) {
+        ret_length = fi_tinject(ompi_mtl_ofi.ep,
+                                start,
+                                length,
+                                endpoint->peer_fiaddr,
+                                match_bits);
+        if (OPAL_UNLIKELY(0 > ret_length)) {
+            opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
+                                "%s:%d: fi_tinject failed: %zd",
+                                __FILE__, __LINE__, ret_length);
+            return ompi_mtl_ofi_get_error(ret);
+        }
 
-    if (OPAL_UNLIKELY(0 > ret_length)) {
-        opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
-                            "%s:%d: fi_tsend failed: %zd",
-                            __FILE__, __LINE__, ret_length);
-        return ompi_mtl_ofi_get_error(ret);
+        ofi_req->event_callback(NULL,ofi_req);
+    } else {
+        ret_length = fi_tsend(ompi_mtl_ofi.ep,
+                              start,
+                              length,
+                              NULL,
+                              endpoint->peer_fiaddr,
+                              match_bits,
+                              (void *) &ofi_req->ctx);
+
+        if (OPAL_UNLIKELY(0 > ret_length)) {
+            opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
+                                "%s:%d: fi_tsend failed: %zd",
+                                __FILE__, __LINE__, ret_length);
+            return ompi_mtl_ofi_get_error(ret);
+        }
     }
 
     return OMPI_SUCCESS;
@@ -484,7 +493,7 @@ ompi_mtl_ofi_recv_callback(struct fi_cq_tagged_entry *wc,
 	    ret_length = fi_tsend(ompi_mtl_ofi.ep,
                               NULL,
                               0,
-                              ompi_mtl_ofi.mr,
+                              NULL,
                               ofi_req->remote_addr,
                               wc->tag | MTL_OFI_SYNC_SEND_ACK,
                               (void *) &ofi_req->ctx);
@@ -515,10 +524,12 @@ ompi_mtl_ofi_recv_error_callback(struct fi_cq_err_entry *error,
     status->MPI_TAG = MTL_OFI_GET_TAG(ofi_req->match_bits);
     status->MPI_SOURCE = MTL_OFI_GET_SOURCE(ofi_req->match_bits);
 
-    /* FIXME: This could be done on a single line... */
     switch (error->err) {
-        case FI_EMSGSIZE:
+        case FI_ETRUNC:
             status->MPI_ERROR = MPI_ERR_TRUNCATE;
+            break;
+        case FI_ECANCELED:
+            status->_cancelled = true;
             break;
         default:
             status->MPI_ERROR = MPI_ERR_INTERN;
@@ -577,7 +588,7 @@ ompi_mtl_ofi_irecv(struct mca_mtl_base_module_t *mtl,
     ret_length = fi_trecv(ompi_mtl_ofi.ep,
                           start,
                           length,
-                          ompi_mtl_ofi.mr,
+                          NULL,
                           remote_addr,
                           match_bits,
                           mask_bits,
@@ -629,10 +640,12 @@ ompi_mtl_ofi_mrecv_error_callback(struct fi_cq_err_entry *error,
     status->MPI_TAG = MTL_OFI_GET_TAG(ofi_req->match_bits);
     status->MPI_SOURCE = MTL_OFI_GET_SOURCE(ofi_req->match_bits);
 
-    /* FIXME: This could be done on a single line... */
     switch (error->err) {
-        case FI_EMSGSIZE:
+        case FI_ETRUNC:
             status->MPI_ERROR = MPI_ERR_TRUNCATE;
+            break;
+        case FI_ECANCELED:
+            status->_cancelled = true;
             break;
         default:
             status->MPI_ERROR = MPI_ERR_INTERN;
@@ -935,10 +948,16 @@ ompi_mtl_ofi_cancel(struct mca_mtl_base_module_t *mtl,
                 ret = fi_cancel((fid_t)ompi_mtl_ofi.ep, &ofi_req->ctx);
                 if (0 == ret) {
                     /**
-                     * The request was successfully cancelled.
+                     * Wait for the request to be cancelled.
                      */
-                    ofi_req->super.ompi_req->req_status._cancelled = true;
-                    ofi_req->super.completion_callback(&ofi_req->super);
+                    while (!ofi_req->super.ompi_req->req_status._cancelled) {
+                        opal_progress();
+                    }
+                } else {
+                    /**
+                     * Could not cancel the request.
+                     */
+                    ofi_req->super.ompi_req->req_status._cancelled = false;
                 }
             }
             break;

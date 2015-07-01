@@ -6,7 +6,7 @@
  *                         reserved.
  *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
  */
 
@@ -21,12 +21,8 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
-#ifdef HAVE_STDINT_H
 #include <stdint.h>
-#endif
-#ifdef HAVE_STDARG_H
 #include <stdarg.h>
-#endif
 
 #include "opal/class/opal_list.h"
 #include "opal/class/opal_value_array.h"
@@ -197,8 +193,14 @@ typedef uint16_t opal_binding_policy_t;
     ((pol) & 0x0fff)
 #define OPAL_SET_BINDING_POLICY(target, pol) \
     (target) = (pol) | (((target) & 0xf000) | OPAL_BIND_GIVEN)
-#define OPAL_SET_DEFAULT_BINDING_POLICY(target, pol) \
-    (target) = (pol) | (((target) & 0xf000) | OPAL_BIND_IF_SUPPORTED)
+#define OPAL_SET_DEFAULT_BINDING_POLICY(target, pol)            \
+    do {                                                        \
+        if (!OPAL_BINDING_POLICY_IS_SET((target))) {            \
+            (target) = (pol) | (((target) & 0xf000) |           \
+                                OPAL_BIND_IF_SUPPORTED);        \
+        }                                                       \
+    } while(0);
+
 /* check if policy is set */
 #define OPAL_BINDING_POLICY_IS_SET(pol) \
     ((pol) & 0x4000)

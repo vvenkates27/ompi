@@ -5,14 +5,16 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -34,7 +36,7 @@ private long handle;
  * @param dispUnit local unit size for displacements (buffer elements)
  * @param info     info object
  * @param comm     communicator
- * @throws MPIException 
+ * @throws MPIException
  */
 public Win(Buffer base, int size, int dispUnit, Info info, Comm comm)
     throws MPIException
@@ -65,6 +67,22 @@ private native long createWin(
         Buffer base, int size, int dispUnit, long info, long comm)
         throws MPIException;
 
+/**
+ * Java binding of {@code MPI_WIN_CREATE_DYNAMIC}.
+ * @param info     info object
+ * @param comm     communicator
+ * @throws MPIException 
+ */
+public Win(Info info, Comm comm)
+    throws MPIException
+{
+    handle = createDynamicWin(info.handle, comm.handle);
+}
+
+private native long createDynamicWin(
+        long info, long comm)
+        throws MPIException;
+
 private int getBaseType(Datatype orgType, Datatype targetType)
 {
     int baseType = orgType.baseType;
@@ -80,9 +98,55 @@ private int getBaseType(Datatype orgType, Datatype targetType)
 }
 
 /**
+ * Java binding of {@code MPI_WIN_ATTACH}.
+ * @param base     initial address of window
+ * @param size     size of window (buffer elements)
+ */
+public void attach(Buffer base, int size) throws MPIException
+{
+    MPI.check();
+    if(!base.isDirect())
+        throw new IllegalArgumentException("The buffer must be direct.");
+
+    int baseSize;
+
+    if(base instanceof ByteBuffer)
+        baseSize = 1;
+    else if(base instanceof CharBuffer || base instanceof ShortBuffer)
+        baseSize = 2;
+    else if(base instanceof IntBuffer || base instanceof FloatBuffer)
+        baseSize = 4;
+    else if(base instanceof LongBuffer || base instanceof DoubleBuffer)
+        baseSize = 8;
+    else
+        throw new AssertionError();
+
+    int sizeBytes = size * baseSize;
+
+    attach(handle, base, sizeBytes);
+}
+
+private native void attach(long win, Buffer base, int size) throws MPIException;
+
+/**
+ * Java binding of {@code MPI_WIN_DETACH}.
+ * @param base     initial address of window
+ */
+public void detach(Buffer base) throws MPIException
+{
+    MPI.check();
+    if(!base.isDirect())
+        throw new IllegalArgumentException("The buffer must be direct.");
+
+    detach(handle, base);
+}
+
+private native void detach(long win, Buffer base) throws MPIException;
+
+/**
  * Java binding of the MPI operation {@code MPI_GET_GROUP}.
  * @return group of processes which share access to the window
- * @throws MPIException 
+ * @throws MPIException
  */
 public Group getGroup() throws MPIException
 {
@@ -200,7 +264,7 @@ private native void fence(long win, int assertion) throws MPIException;
  * Java binding of the MPI operation {@code MPI_WIN_START}.
  * @param group     group of target processes
  * @param assertion program assertion
- * @throws MPIException 
+ * @throws MPIException
  */
 public void start(Group group, int assertion) throws MPIException
 {
@@ -213,7 +277,7 @@ private native void start(long win, long group, int assertion)
 
 /**
  * Java binding of the MPI operation {@code MPI_WIN_COMPLETE}.
- * @throws MPIException 
+ * @throws MPIException
  */
 public void complete() throws MPIException
 {
@@ -227,7 +291,7 @@ private native void complete(long win) throws MPIException;
  * Java binding of the MPI operation {@code MPI_WIN_POST}.
  * @param group     group of origin processes
  * @param assertion program assertion
- * @throws MPIException 
+ * @throws MPIException
  */
 public void post(Group group, int assertion) throws MPIException
 {
@@ -240,7 +304,7 @@ private native void post(long win, long group, int assertion)
 
 /**
  * Java binding of the MPI operation {@code MPI_WIN_WAIT}.
- * @throws MPIException 
+ * @throws MPIException
  */
 public void waitFor() throws MPIException
 {
@@ -253,7 +317,7 @@ private native void waitFor(long win) throws MPIException;
 /**
  * Java binding of the MPI operation {@code MPI_WIN_TEST}.
  * @return true if success
- * @throws MPIException 
+ * @throws MPIException
  */
 public boolean test() throws MPIException
 {
@@ -268,7 +332,7 @@ private native boolean test(long win) throws MPIException;
  * @param lockType  either MPI.LOCK_EXCLUSIVE or MPI.LOCK_SHARED
  * @param rank      rank of locked window
  * @param assertion program assertion
- * @throws MPIException 
+ * @throws MPIException
  */
 public void lock(int lockType, int rank, int assertion) throws MPIException
 {
@@ -282,7 +346,7 @@ private native void lock(long win, int lockType, int rank, int assertion)
 /**
  * Java binding of the MPI operation {@code MPI_WIN_UNLOCK}.
  * @param rank rank of window
- * @throws MPIException 
+ * @throws MPIException
  */
 public void unlock(int rank) throws MPIException
 {
@@ -309,7 +373,7 @@ private native void setErrhandler(long win, long errhandler)
 /**
  * Java binding of the MPI operation {@code MPI_WIN_CALL_ERRHANDLER}.
  * @param errorCode error code
- * @throws MPIException 
+ * @throws MPIException
  */
 public void callErrhandler(int errorCode) throws MPIException
 {
@@ -395,7 +459,7 @@ private native void deleteAttr(long win, int keyval) throws MPIException;
 
 /**
  * Java binding of {@code MPI_WIN_FREE}.
- * @throws MPIException 
+ * @throws MPIException
  */
 @Override public void free() throws MPIException
 {
@@ -404,5 +468,32 @@ private native void deleteAttr(long win, int keyval) throws MPIException;
 }
 
 private native long free(long win) throws MPIException;
+
+/**
+ * Java binding of the MPI operation {@code MPI_WIN_GET_INFO}.
+ * @throws MPIException
+ */
+public Info getInfo() throws MPIException
+{
+    MPI.check();
+    return new Info(getInfo(handle));
+}
+
+private native long getInfo(long win)
+        throws MPIException;
+
+/**
+ * Java binding of the MPI operation {@code MPI_WIN_SET_INFO}.
+ * @param info the new info
+ * @throws MPIException
+ */
+public void setInfo(Info info) throws MPIException
+{
+    MPI.check();
+    setInfo(handle, info.handle);
+}
+
+private native void setInfo(long win, long info)
+        throws MPIException;
 
 } // Win

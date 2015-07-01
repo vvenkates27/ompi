@@ -1,10 +1,12 @@
 /*
  * Copyright (c) 2013-2015 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -20,7 +22,7 @@
 #include "oshmem/mca/memheap/base/base.h"
 #include "orte/mca/errmgr/errmgr.h"
 
-mca_memheap_base_module_t mca_memheap;
+mca_memheap_base_module_t mca_memheap = {0};
 
 /**
  * Function for weeding out memheap components that shouldn't be executed.
@@ -36,7 +38,7 @@ static memheap_context_t* _memheap_create(void);
 
 /**
  * Choose to init one component with the highest priority.
- * If the include list if it is not empty choose a component that appear in the list. 
+ * If the include list if it is not empty choose a component that appear in the list.
  * O/W choose the highest priority component not in the exclude list.
  * Include and exclude lists may be given in the shmem launcher command line.
  */

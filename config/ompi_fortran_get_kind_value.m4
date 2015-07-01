@@ -6,7 +6,7 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
@@ -14,9 +14,9 @@ dnl Copyright (c) 2010-2012 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
@@ -28,9 +28,10 @@ AC_DEFUN([OMPI_FORTRAN_GET_KIND_VALUE],[
     AS_VAR_PUSHDEF([kind_value_var],
        m4_translit([[ompi_cv_fortran_kind_value_$1]], [*], [p]))
 
-    rm -f conftest.out    
+    rm -f conftest.out
     AC_CACHE_CHECK([KIND value of Fortran $1], kind_value_var,
-        [if test $OMPI_WANT_FORTRAN_BINDINGS -eq 0 || test $ompi_fortran_happy -eq 0; then
+        [if test $OMPI_TRY_FORTRAN_BINDINGS -eq $OMPI_FORTRAN_NO_BINDINGS || \
+            test $ompi_fortran_happy -eq 0; then
              value=skipped
          else
              AC_LANG_PUSH([Fortran])
@@ -75,7 +76,8 @@ AC_DEFUN([_OMPI_FORTRAN_SELECTED_INT_KIND],[
     AC_CACHE_CHECK([Fortran value of selected_int_kind($1)], sel_int_kind_var,
         [outval=no
 
-         AS_IF([test $OMPI_WANT_FORTRAN_BINDINGS -eq 1 && test $ompi_fortran_happy -eq 1],
+         AS_IF([test $OMPI_TRY_FORTRAN_BINDINGS -gt $OMPI_FORTRAN_NO_BINDINGS && \
+                test $ompi_fortran_happy -eq 1],
                [rm -f conftest.out
                 AC_LANG_PUSH([Fortran])
                 AC_RUN_IFELSE(AC_LANG_PROGRAM(, [[

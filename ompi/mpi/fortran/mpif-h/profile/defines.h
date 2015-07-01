@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2013 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -15,9 +15,9 @@
  * Copyright (c) 2013-2014 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 #ifndef OMPI_F77_PROFILE_DEFINES_H
@@ -29,6 +29,8 @@
 #define ompi_add_error_code_f pompi_add_error_code_f
 #define ompi_add_error_string_f pompi_add_error_string_f
 #define ompi_address_f pompi_address_f
+#define ompi_aint_add_f pompi_aint_add_f
+#define ompi_aint_diff_f pompi_aint_diff_f
 #define ompi_allgather_f pompi_allgather_f
 #define ompi_allgatherv_f pompi_allgatherv_f
 #define ompi_alloc_mem_f pompi_alloc_mem_f
@@ -348,12 +350,15 @@
 #define ompi_win_allocate_cptr_f pompi_win_allocate_cptr_f
 #define ompi_win_allocate_shared_f pompi_win_allocate_shared_f
 #define ompi_win_allocate_shared_cptr_f pompi_win_allocate_shared_cptr_f
+#define ompi_win_attach_f pompi_win_attach_f
 #define ompi_win_call_errhandler_f pompi_win_call_errhandler_f
 #define ompi_win_complete_f pompi_win_complete_f
 #define ompi_win_create_f pompi_win_create_f
+#define ompi_win_create_dynamic_f pompi_win_create_dynamic_f
 #define ompi_win_create_errhandler_f pompi_win_create_errhandler_f
 #define ompi_win_create_keyval_f pompi_win_create_keyval_f
 #define ompi_win_delete_attr_f pompi_win_delete_attr_f
+#define ompi_win_detach_f pompi_win_detach_f
 #define ompi_win_fence_f pompi_win_fence_f
 #define ompi_win_flush_f pompi_win_flush_f
 #define ompi_win_flush_all_f pompi_win_flush_all_f
@@ -364,12 +369,14 @@
 #define ompi_win_get_attr_f pompi_win_get_attr_f
 #define ompi_win_get_errhandler_f pompi_win_get_errhandler_f
 #define ompi_win_get_group_f pompi_win_get_group_f
+#define ompi_win_get_info_f pompi_win_get_info_f
 #define ompi_win_get_name_f pompi_win_get_name_f
 #define ompi_win_lock_f pompi_win_lock_f
 #define ompi_win_lock_all_f pompi_win_lock_all_f
 #define ompi_win_post_f pompi_win_post_f
 #define ompi_win_set_attr_f pompi_win_set_attr_f
 #define ompi_win_set_errhandler_f pompi_win_set_errhandler_f
+#define ompi_win_set_info_f pompi_win_set_info_f
 #define ompi_win_set_name_f pompi_win_set_name_f
 #define ompi_win_shared_query_f pompi_win_shared_query_f
 #define ompi_win_shared_query_cptr_f pompi_win_shared_query_cptr_f

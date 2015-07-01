@@ -4,7 +4,7 @@ dnl Copyright (c) 2004-2005 The Trustees of Indiana University.
 dnl                         All rights reserved.
 dnl Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
 dnl                         All rights reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
@@ -12,19 +12,21 @@ dnl Copyright (c) 2011-2012 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
 AC_DEFUN([OMPI_FORTRAN_CHECK_LOGICAL_ARRAY],[
-    AS_VAR_PUSHDEF([logical_array_var], 
+    AS_VAR_PUSHDEF([logical_array_var],
                    [ompi_cv_fortran_logical_array_correct])
 
     AC_CACHE_CHECK([for correct handling of Fortran logical arrays],
         logical_array_var,
-        [if test "$1" = "none" || test $OMPI_WANT_FORTRAN_BINDINGS -eq 0 || test $ompi_fortran_happy -eq 0; then
+        [if test "$1" = "none" || \
+            test $OMPI_TRY_FORTRAN_BINDINGS -eq $OMPI_FORTRAN_NO_BINDINGS  || \
+            test $ompi_fortran_happy -eq 0; then
              value=skipped
          else
              # Fortran module
@@ -39,7 +41,7 @@ AC_DEFUN([OMPI_FORTRAN_CHECK_LOGICAL_ARRAY],[
 EOF
 
              # C module
-             # We really need the confdefs.h Header file for 
+             # We really need the confdefs.h Header file for
              # the ompi_fortran_logical_t definition
              if test \! -f confdefs.h ; then
                  AC_MSG_WARN([*** Problem running configure test!])
@@ -95,7 +97,7 @@ EOF
                  AC_MSG_ERROR([Error determining if arrays of logical values work properly.])
              fi
 
-             AS_IF([test "$cross_compiling" = "yes"], 
+             AS_IF([test "$cross_compiling" = "yes"],
                  [ # assume we're ok
                   value=yes],
                  [OPAL_LOG_COMMAND([./conftest],
@@ -103,11 +105,11 @@ EOF
                            value=yes
                        else
                            value=no
-                       fi],             
+                       fi],
                       [value=no])])
          fi
          AS_VAR_SET(logical_array_var, [$value])
-         ])
+        ])
 
     AS_VAR_COPY([ompi_fortran_logical_array_correct], [logical_array_var])
     if test "$ompi_fortran_logical_array_correct" = "no" ; then

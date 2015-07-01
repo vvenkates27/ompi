@@ -1,12 +1,14 @@
 ! -*- f90 -*-
 !
-! Copyright (c) 2009-2014 Cisco Systems, Inc.  All rights reserved.
+! Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 ! Copyright (c) 2009-2012 Los Alamos National Security, LLC.
 !                         All rights reserved.
 ! Copyright (c) 2012      The University of Tennessee and The University
 !                         of Tennessee Research Foundation.  All rights
 !                         reserved.
 ! Copyright (c) 2012      Inria.  All rights reserved.
+! Copyright (c) 2015      Research Organization for Information Science
+!                         and Technology (RIST). All rights reserved.
 ! $COPYRIGHT$
 !
 ! This file provides the interface specifications for the MPI Fortran
@@ -1615,6 +1617,24 @@ end subroutine pompi_topo_test_f
 !   DOUBLE PRECISION :: MPI_Wtime_f
 !end function  MPI_Wtime_f
 
+function pompi_aint_add_f(base,diff) &
+   BIND(C, name="pompi_aint_add_f")
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: base
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: diff
+   INTEGER(MPI_ADDRESS_KIND) :: pompi_aint_add_f
+end function pompi_aint_add_f
+
+function pompi_aint_diff_f(addr1,addr2) &
+   BIND(C, name="pompi_aint_diff_f")
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: addr1
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: addr2
+   INTEGER(MPI_ADDRESS_KIND) :: pompi_aint_diff_f
+end function pompi_aint_diff_f
+
 subroutine pompi_abort_f(comm,errorcode,ierror) &
    BIND(C, name="pompi_abort_f")
    implicit none
@@ -1764,9 +1784,8 @@ end subroutine pompi_finalize_f
 
 subroutine pompi_free_mem_f(base,ierror) &
    BIND(C, name="pompi_free_mem_f")
-   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
    implicit none
-   INTEGER(MPI_ADDRESS_KIND), DIMENSION(*) OMPI_ASYNCHRONOUS :: base
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: base
    INTEGER, INTENT(OUT) :: ierror
 end subroutine pompi_free_mem_f
 
@@ -1963,7 +1982,8 @@ end subroutine pompi_comm_spawn_f
 ! TODO - FIXME to use arrays of strings and pass strlen
 subroutine pompi_comm_spawn_multiple_f(count,array_of_commands, &
                                       array_of_argv, array_of_maxprocs,array_of_info,root, &
-                                      comm,intercomm,array_of_errcodes,ierror) &
+                                      comm,intercomm,array_of_errcodes,ierror, &
+                                      cmd_len, argv_len) &
    BIND(C, name="pompi_comm_spawn_multiple_f")
    use, intrinsic :: ISO_C_BINDING, only : C_CHAR
    implicit none
@@ -1975,6 +1995,7 @@ subroutine pompi_comm_spawn_multiple_f(count,array_of_commands, &
    INTEGER, INTENT(OUT) :: intercomm
    INTEGER, INTENT(OUT) :: array_of_errcodes(*)
    INTEGER, INTENT(OUT) :: ierror
+   INTEGER, INTENT(IN) :: cmd_len, argv_len
 end subroutine pompi_comm_spawn_multiple_f
 
 subroutine pompi_lookup_name_f(service_name,info,port_name,ierror, &

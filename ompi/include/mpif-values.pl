@@ -2,9 +2,9 @@
 #
 # Copyright (c) 2011-2014 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
@@ -51,7 +51,7 @@ sub write_file {
             $need_write = 1;
         }
     }
-    
+
     if ($need_write) {
         open(FILE_OUT, ">$filename_out") || die "Couldn't open $filename_out";
         print FILE_OUT $str;
@@ -328,8 +328,6 @@ $constants->{MPI_ERR_RMA_SHARED} = 71;
 $constants->{MPI_T_ERR_INVALID} = 72;
 $constants->{MPI_ERR_LASTCODE} = 92;
 
-$constants->{MPI_ERR_SYSRESOURCE} = -2;
-
 $constants->{MPI_IDENT} = 0;
 $constants->{MPI_CONGRUENT} = 1;
 $constants->{MPI_SIMILAR} = 2;
@@ -431,13 +429,13 @@ sub write_fortran_file {
     write_file($file, $header);
 }
 
-write_fortran_file($header, $handles, 
+write_fortran_file($header, $handles,
                    "$topdir/ompi/include/mpif-handles.h");
-write_fortran_file($header, $constants, 
+write_fortran_file($header, $constants,
                    "$topdir/ompi/include/mpif-constants.h");
-write_fortran_file($header, $io_handles, 
+write_fortran_file($header, $io_handles,
                    "$topdir/ompi/include/mpif-io-handles.h");
-write_fortran_file($header, $io_constants, 
+write_fortran_file($header, $io_constants,
                    "$topdir/ompi/include/mpif-io-constants.h");
 
 #----------------------------------------------------------------------------

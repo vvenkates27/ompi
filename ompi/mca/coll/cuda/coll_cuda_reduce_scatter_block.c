@@ -2,11 +2,11 @@
  * Copyright (c) 2014      The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2014      NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2014-2015 NVIDIA Corporation.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -27,7 +27,7 @@
  *	Returns:	- MPI_SUCCESS or error code
  *
  * Algorithm:
- *     reduce and scatter (needs to be cleaned 
+ *     reduce and scatter (needs to be cleaned
  *     up at some point)
  */
 int
@@ -39,7 +39,7 @@ mca_coll_cuda_reduce_scatter_block(void *sbuf, void *rbuf, int rcount,
 {
     mca_coll_cuda_module_t *s = (mca_coll_cuda_module_t*) module;
     ptrdiff_t true_lb, true_extent, lb, extent;
-    char *rbuf1 = NULL, *sbuf1 = NULL, *rbuf2;
+    char *rbuf1 = NULL, *sbuf1 = NULL, *rbuf2 = NULL;
     const char *sbuf2;
     size_t sbufsize, rbufsize;
     int rc;

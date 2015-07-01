@@ -5,15 +5,17 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -55,9 +57,9 @@ extern const char *orte_info_ver_svn;
 
 void orte_info_do_version(bool want_all, opal_cmd_line_t *cmd_line);
 void orte_info_show_orte_version(const char *scope);
-void orte_info_show_component_version(const char *type_name, 
+void orte_info_show_component_version(const char *type_name,
                                       const char *component_name,
-                                      const char *scope, 
+                                      const char *scope,
                                       const char *ver_type);
 
 /*
@@ -86,7 +88,7 @@ extern const char *orte_info_path_pkgdatadir;
 extern const char *orte_info_path_pkgincludedir;
 
 void orte_info_do_params(bool want_all, bool want_internal);
-void orte_info_show_mca_params(const char *type, const char *component, 
+void orte_info_show_mca_params(const char *type, const char *component,
                                bool want_internal);
 
 void orte_info_do_path(bool want_all, opal_cmd_line_t *cmd_line);
@@ -99,11 +101,11 @@ void orte_info_do_config(bool want_all);
 /*
  * Output-related functions
  */
-void orte_info_out(const char *pretty_message, 
-                   const char *plain_message, 
+void orte_info_out(const char *pretty_message,
+                   const char *plain_message,
                    const char *value);
-void orte_info_out_int(const char *pretty_message, 
-                       const char *plain_message, 
+void orte_info_out_int(const char *pretty_message,
+                       const char *plain_message,
                        int value);
 /*
  * Component-related functions
@@ -115,7 +117,7 @@ typedef struct {
 } orte_info_component_map_t;
 ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_info_component_map_t);
 
-extern opal_pointer_array_t component_map;
+extern opal_pointer_array_t orte_component_map;
 
 void orte_info_components_open(void);
 void orte_info_components_close(void);

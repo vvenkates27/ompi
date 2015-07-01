@@ -5,7 +5,7 @@
 # Copyright (c) 2004-2013 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
-# Copyright (c) 2004-2009 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2004-2009 High Performance Computing Center Stuttgart,
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
@@ -17,9 +17,9 @@
 # Copyright (c) 2015      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
@@ -29,7 +29,7 @@ SUBDIRS = profile
 
 #
 # OMPI_PRPOFILING_DEFINES flag is enabled when we want our MPI_* symbols
-# to be replaced by PMPI_*. In other words, this flag decides 
+# to be replaced by PMPI_*. In other words, this flag decides
 # whether "profile/defines.h" is included or not. "profile/defines.h"
 # replaces all MPI_* symbols with PMPI_* symbols. In this directory,
 # we need it to be 0
@@ -130,6 +130,8 @@ libmpi_mpifh_la_SOURCES += \
         add_error_code_f.c \
         add_error_string_f.c \
         address_f.c \
+        aint_add_f.c \
+        aint_diff_f.c \
         allgather_f.c \
         allgatherv_f.c \
         alloc_mem_f.c \
@@ -393,24 +395,29 @@ libmpi_mpifh_la_SOURCES += \
         fetch_and_op_f.c \
         win_allocate_f.c \
         win_allocate_shared_f.c \
+        win_attach_f.c \
         win_call_errhandler_f.c \
         win_complete_f.c \
+        win_create_dynamic_f.c \
         win_create_errhandler_f.c \
         win_create_f.c \
         win_create_keyval_f.c \
         win_delete_attr_f.c \
+        win_detach_f.c \
         win_fence_f.c \
         win_free_f.c \
         win_free_keyval_f.c \
         win_get_attr_f.c \
         win_get_errhandler_f.c \
         win_get_group_f.c \
+        win_get_info_f.c \
         win_get_name_f.c \
         win_lock_f.c \
         win_lock_all_f.c \
         win_post_f.c \
         win_set_attr_f.c \
         win_set_errhandler_f.c \
+        win_set_info_f.c \
         win_set_name_f.c \
         win_shared_query_f.c \
         win_start_f.c \

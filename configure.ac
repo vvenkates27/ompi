@@ -375,6 +375,7 @@ AC_CHECK_TYPES(ptrdiff_t)
 # Check for type sizes
 #
 
+AC_CHECK_SIZEOF(_Bool)
 AC_CHECK_SIZEOF(char)
 AC_CHECK_SIZEOF(short)
 AC_CHECK_SIZEOF(int)
@@ -419,7 +420,7 @@ AC_CHECK_SIZEOF(pid_t)
 # Check for type alignments
 #
 
-OPAL_C_GET_ALIGNMENT(_Bool, OPAL_ALIGNMENT_BOOL)
+OPAL_C_GET_ALIGNMENT(bool, OPAL_ALIGNMENT_BOOL)
 OPAL_C_GET_ALIGNMENT(int8_t, OPAL_ALIGNMENT_INT8)
 OPAL_C_GET_ALIGNMENT(int16_t, OPAL_ALIGNMENT_INT16)
 OPAL_C_GET_ALIGNMENT(int32_t, OPAL_ALIGNMENT_INT32)
@@ -459,23 +460,6 @@ fi
 
 OPAL_C_GET_ALIGNMENT(void *, OPAL_ALIGNMENT_VOID_P)
 OPAL_C_GET_ALIGNMENT(size_t, OPAL_ALIGNMENT_SIZE_T)
-
-#
-# Does the C compiler native support "bool"? (i.e., without
-# <stdbool.h> or any other help)
-#
-
-OPAL_VAR_SCOPE_PUSH([MSG])
-AC_MSG_CHECKING(for C bool type)
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
-AC_INCLUDES_DEFAULT],
-[[bool bar, foo = true; bar = foo;]])],
-[OPAL_NEED_C_BOOL=0 MSG=yes],[OPAL_NEED_C_BOOL=1 MSG=no])
-AC_DEFINE_UNQUOTED(OPAL_NEED_C_BOOL, $OPAL_NEED_C_BOOL,
-    [Whether the C compiler supports "bool" without any other help (such as <stdbool.h>)])
-AC_MSG_RESULT([$MSG])
-AC_CHECK_SIZEOF(_Bool)
-OPAL_VAR_SCOPE_POP
 
 #
 # Check for other compiler characteristics
@@ -578,7 +562,7 @@ m4_ifdef([project_ompi], [OMPI_SETUP_MPI_FORTRAN], [ompi_fortran_happy=0])
 AM_CONDITIONAL(OSHMEM_BUILD_FORTRAN_BINDINGS,
     [test "$enable_oshmem" = "yes" && \
      test "$ompi_fortran_happy" = "1" && \
-     test "$OMPI_WANT_FORTRAN_BINDINGS" = "1" && \
+     test "$OMPI_TRY_FORTRAN_BINDINGS" -gt "$OMPI_FORTRAN_NO_BINDINGS" && \
      test "$enable_oshmem_fortran" != "no"])
 
 # checkpoint results
@@ -592,18 +576,17 @@ AC_CACHE_SAVE
 opal_show_title "Header file tests"
 
 AC_CHECK_HEADERS([alloca.h aio.h arpa/inet.h dirent.h \
-    dlfcn.h execinfo.h err.h fcntl.h grp.h inttypes.h libgen.h \
+    dlfcn.h execinfo.h err.h fcntl.h grp.h libgen.h \
     libutil.h memory.h netdb.h netinet/in.h netinet/tcp.h \
-    poll.h pthread.h pty.h pwd.h sched.h stdint.h stddef.h \
-    stdlib.h string.h strings.h stropts.h sys/fcntl.h sys/ipc.h sys/shm.h \
+    poll.h pthread.h pty.h pwd.h sched.h \
+    strings.h stropts.h sys/fcntl.h sys/ipc.h sys/shm.h \
     sys/ioctl.h sys/mman.h sys/param.h sys/queue.h \
     sys/resource.h sys/select.h sys/socket.h sys/sockio.h \
-    stdarg.h sys/stat.h sys/statfs.h sys/statvfs.h sys/time.h sys/tree.h \
+    sys/stat.h sys/statfs.h sys/statvfs.h sys/time.h sys/tree.h \
     sys/types.h sys/uio.h sys/un.h net/uio.h sys/utsname.h sys/vfs.h sys/wait.h syslog.h \
-    time.h termios.h ulimit.h unistd.h util.h utmp.h malloc.h \
-    ifaddrs.h crt_externs.h regex.h signal.h \
-    mntent.h paths.h \
-    ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h limits.h db.h ndbm.h])
+    termios.h ulimit.h unistd.h util.h utmp.h malloc.h \
+    ifaddrs.h crt_externs.h regex.h mntent.h paths.h \
+    ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h db.h ndbm.h])
 
 AC_CHECK_HEADERS([sys/mount.h], [], [],
 [AC_INCLUDES_DEFAULT
@@ -635,37 +618,6 @@ AC_CHECK_HEADERS([net/if.h], [], [],
 # include <sys/socket.h>
 #endif
 ])
-
-# Note that sometimes we have <stdbool.h>, but it doesn't work (e.g.,
-# have both Portland and GNU installed; using pgcc will find GNU's
-# <stdbool.h>, which all it does -- by standard -- is define "bool" to
-# "_Bool" [see
-# http://www.opengroup.org/onlinepubs/009695399/basedefs/stdbool.h.html],
-# and Portland has no idea what to do with _Bool).
-
-# So first figure out if we have <stdbool.h> (i.e., check the value of
-# the macro HAVE_STDBOOL_H from the result of AC_CHECK_HEADERS,
-# above).  If we do have it, then check to see if it actually works.
-# Define OPAL_USE_STDBOOL_H as approrpaite.
-AC_CHECK_HEADERS([stdbool.h], [have_stdbool_h=1], [have_stdbool_h=0])
-OPAL_VAR_SCOPE_PUSH([MSG])
-AC_MSG_CHECKING([if <stdbool.h> works])
-if test "$have_stdbool_h" = "1"; then
-    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
-AC_INCLUDES_DEFAULT[
-#if HAVE_STDBOOL_H
-#include <stdbool.h>
-#endif]],
-[[bool bar, foo = true; bar = foo;]])],
-[OPAL_USE_STDBOOL_H=1 MSG=yes],[OPAL_USE_STDBOOL_H=0 MSG=no])
-else
-    OPAL_USE_STDBOOL_H=0
-    MSG="no (do not have <stdbool.h>)"
-fi
-AC_DEFINE_UNQUOTED(OPAL_USE_STDBOOL_H, $OPAL_USE_STDBOOL_H,
-    [Whether to use <stdbool.h> or not])
-AC_MSG_RESULT([$MSG])
-OPAL_VAR_SCOPE_POP
 
 # checkpoint results
 AC_CACHE_SAVE
@@ -804,12 +756,14 @@ AC_CACHE_SAVE
 ##################################
 
 AC_MSG_CHECKING([the linker for support for the -fini option])
+OPAL_VAR_SCOPE_PUSH([LDFLAGS_save])
 LDFLAGS_save=$LDFLAGS
 LDFLAGS="$LDFLAGS_save -Wl,-fini -Wl,finalize"
 AC_TRY_LINK([void finalize (void) {}], [], [AC_MSG_RESULT([yes])
         opal_ld_have_fini=1], [AC_MSG_RESULT([no])
         opal_ld_have_fini=0])
 LDFLAGS=$LDFLAGS_save
+OPAL_VAR_SCOPE_POP
 
 opal_destructor_use_fini=0
 opal_no_destructor=0
@@ -933,24 +887,6 @@ AC_C_BIGENDIAN
 
 OPAL_CHECK_BROKEN_QSORT
 
-AC_CACHE_CHECK([if word-sized integers must be word-size aligned],
-    [ompi_cv_c_word_size_align],
-    [AC_LANG_PUSH(C)
-     AC_RUN_IFELSE([AC_LANG_PROGRAM([dnl
-#include <stdlib.h>], [[    long data[2] = {0, 0};
-    long *lp;
-    int *ip;
-    ip = (int*) data;
-    ip++;
-    lp = (long*) ip;
-    return lp[0]; ]])],
-        [ompi_cv_c_word_size_align=no],
-        [ompi_cv_c_word_size_align=yes],
-        [ompi_cv_c_word_size_align=yes])])
-AS_IF([test $ompi_cv_c_word_size_align = yes], [results=1], [results=0])
-AC_DEFINE_UNQUOTED([OPAL_ALIGN_WORD_SIZE_INTEGERS], [$results],
-    [set to 1 if word-size integers must be aligned to word-size padding to prevent bus errors])
-
 # all: SYSV semaphores
 # all: SYSV shared memory
 # all: size of FD_SET
@@ -992,29 +928,21 @@ AC_PROG_EGREP
 AM_PROG_AS
 AM_PROG_LEX
 
-# If we don't have GNU Flex and we don't have a generated .c file
-# (distribution tarballs will have the .c file included, but SVN
-# checkouts will not), then error.  Must have GNU Flex -- other
-# versions of Lex are not workable (all things being equal, since this
-# is *only* required for developers, we decided that it really was not
-# worth it to be portable between different versions of lex ;-).
+# If we don't have Flex and we don't have a generated .c file
+# (distribution tarballs will have the .c file included, but git
+# clones will not), then error.  Must have Flex -- other versions of
+# Lex are not workable (all things being equal, since this is *only*
+# required for developers, we decided that it really was not worth it
+# to be portable between different versions of lex ;-).
 
 if test -z "$LEX" || \
    test -n "`echo $LEX | $GREP missing`" || \
    test "`basename $LEX`" != "flex"; then
     if test ! -f "$srcdir/opal/util/show_help_lex.c"; then
-        AC_MSG_WARN([*** Could not find GNU Flex on your system.])
-        AC_MSG_WARN([*** GNU Flex required for developer builds of Open MPI.])
+        AC_MSG_WARN([*** Could not find Flex on your system.])
+        AC_MSG_WARN([*** Flex is required for developer builds of Open MPI.])
         AC_MSG_WARN([*** Other versions of Lex are not supported.])
-        AC_MSG_WARN([*** YOU DO NOT NEED FLEX FOR DISTRIBUTION TARBALLS!])
-        AC_MSG_WARN([*** If you absolutely cannot install GNU Flex on this system])
-        AC_MSG_WARN([*** consider using a distribution tarball, or generate the])
-        AC_MSG_WARN([*** following files on another system (using Flex) and])
-        AC_MSG_WARN([*** copy them here:])
-        for lfile in `find . -name \*.l -print`; do
-            cfile="`echo $lfile | cut -d. -f-2`"
-            AC_MSG_WARN([***     $cfile.c])
-        done
+        AC_MSG_WARN([*** YOU DO NOT NEED FLEX WHEN BUILDING DISTRIBUTION TARBALLS!])
         AC_MSG_ERROR([Cannot continue])
     fi
 fi
@@ -1218,7 +1146,7 @@ fi
 # do this for C++, because even if we're not building the MPI C++
 # bindings, we *do* still want to setup the mpicxx wrapper if we have
 # a C++ compiler.
-AS_IF([test "$OMPI_WANT_FORTRAN_BINDINGS" != "1"],[F77=no FC=no])
+AS_IF([test "$OMPI_TRY_FORTRAN_BINDINGS" = "$OMPI_FORTRAN_NO_BINDINGS"],[F77=no FC=no])
 
 LT_INIT([dlopen win32-dll])
 

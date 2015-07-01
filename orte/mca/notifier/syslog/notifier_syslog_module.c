@@ -28,9 +28,7 @@
 #ifdef HAVE_SYSLOG_H
 #include <syslog.h>
 #endif
-#ifdef HAVE_STDARG_H
 #include <stdarg.h>
-#endif
 
 #include "opal/util/show_help.h"
 
@@ -58,17 +56,17 @@ orte_notifier_base_module_t orte_notifier_syslog_module = {
 };
 
 
-static int init(void) 
+static int init(void)
 {
     int opts;
-    
+
     opts = LOG_CONS | LOG_PID;
     openlog("OpenRTE Error Report:", opts, LOG_USER);
-    
+
     return ORTE_SUCCESS;
 }
 
-static void finalize(void) 
+static void finalize(void)
 {
     closelog();
 }
@@ -88,7 +86,8 @@ static void mylog(orte_notifier_request_t *req)
     syslog(req->severity, "[%s]%s %s: JOBID %s REPORTS ERROR %s: %s", tod,
            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
            orte_notifier_base_sev2str(req->severity),
-           ORTE_JOBID_PRINT(req->jdata->jobid),
+           ORTE_JOBID_PRINT((NULL == req->jdata) ?
+                            ORTE_JOBID_INVALID : req->jdata->jobid),
            orte_job_state_to_str(req->state),
            (NULL == req->msg) ? "<N/A>" : req->msg);
 }
@@ -126,7 +125,8 @@ static void myreport(orte_notifier_request_t *req)
 
     syslog(req->severity, "[%s]%s JOBID %s REPORTS STATE %s: %s", tod,
            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-           ORTE_JOBID_PRINT(req->jdata->jobid),
+           ORTE_JOBID_PRINT((NULL == req->jdata) ?
+                            ORTE_JOBID_INVALID : req->jdata->jobid),
            orte_job_state_to_str(req->state),
            (NULL == req->msg) ? "<N/A>" : req->msg);
 }

@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -5,28 +6,26 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2013      Los Alamos National Security, LLC.
- *                         All rights reserved.
+ * Copyright (c) 2013-2015 Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * Copyright (c) 2014      Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
 #include "opal_config.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 
 #include <errno.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -119,6 +118,9 @@ int opal_util_init_sys_limits(char **errmsg)
 
     /* parse the requested limits to set */
     lims = opal_argv_split(opal_set_max_sys_limits, ',');
+    if (NULL == lims) {
+        return OPAL_ERR_OUT_OF_RESOURCE;
+    }
 
     /* each limit is expressed as a "param:value" pair */
     for (i=0; NULL != lims[i]; i++) {
@@ -223,9 +225,7 @@ int opal_util_init_sys_limits(char **errmsg)
     rc = OPAL_SUCCESS;
 
 out:
-    if (NULL != lims) {
-        opal_argv_free(lims);
-    }
+    opal_argv_free(lims);
     if (NULL != lim) {
         opal_argv_free(lim);
     }

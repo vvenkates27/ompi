@@ -177,7 +177,6 @@ static int recv_nb(struct dte_data_representation_t data,
     }
     if (HCOL_DTE_IS_INLINE(data)){
         /*do inline nb recv*/
-        int rc;
         size_t size;
         ompi_request_t *ompi_req;
         opal_free_list_item_t *item;
@@ -248,7 +247,6 @@ static int send_nb( dte_data_representation_t data,
     }
     if (HCOL_DTE_IS_INLINE(data)){
         /*do inline nb recv*/
-        int rc;
         size_t size;
         ompi_request_t *ompi_req;
         if (!buffer && !HCOL_DTE_IS_ZERO(data)) {
@@ -379,7 +377,7 @@ static int group_id(rte_grp_handle_t group){
     return ((ompi_communicator_t *)group)->c_contextid;
 }
 
-static int 
+static int
 request_free(struct ompi_request_t **ompi_req)
 {
     ompi_request_t *req = *ompi_req;

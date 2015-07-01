@@ -4,9 +4,9 @@
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -44,18 +44,13 @@ lk_cas64(ompi_osc_portals4_module_t *module,
 {
     int ret;
     size_t offset = offsetof(ompi_osc_portals4_node_state_t, lock);
-    ptl_handle_md_t result_md_h, write_md_h;
-    void *result_base, *write_base;
 
     (void)opal_atomic_add_64(&module->opcount, 1);
 
-    ompi_osc_portals4_get_md(result_val, module->md_h, &result_md_h, &result_base);
-    ompi_osc_portals4_get_md(&write_val, module->md_h, &write_md_h, &write_base);
-
-    ret = PtlSwap(result_md_h,
-                  (char*) result_val - (char*) result_base,
-                  write_md_h,
-                  (char*) &write_val - (char*) write_base,
+    ret = PtlSwap(module->md_h,
+                  (ptl_size_t) result_val,
+                  module->md_h,
+                  (ptl_size_t) &write_val,
                   sizeof(int64_t),
                   ompi_osc_portals4_get_peer(module, target),
                   module->pt_idx,
@@ -82,15 +77,11 @@ lk_write64(ompi_osc_portals4_module_t *module,
 {
     int ret;
     size_t offset = offsetof(ompi_osc_portals4_node_state_t, lock);
-    ptl_handle_md_t md_h;
-    void *base;
 
     (void)opal_atomic_add_64(&module->opcount, 1);
 
-    ompi_osc_portals4_get_md(&write_val, module->md_h, &md_h, &base);
-
-    ret = PtlPut(md_h,
-                 (char*) &write_val - (char*) base,
+    ret = PtlPut(module->md_h,
+                 (ptl_size_t) &write_val,
                  sizeof(int64_t),
                  PTL_ACK_REQ,
                  ompi_osc_portals4_get_peer(module, target),
@@ -116,18 +107,13 @@ lk_add64(ompi_osc_portals4_module_t *module,
 {
     int ret;
     size_t offset = offsetof(ompi_osc_portals4_node_state_t, lock);
-    ptl_handle_md_t result_md_h, write_md_h;
-    void *result_base, *write_base;
 
     (void)opal_atomic_add_64(&module->opcount, 1);
 
-    ompi_osc_portals4_get_md(result_val, module->md_h, &result_md_h, &result_base);
-    ompi_osc_portals4_get_md(&write_val, module->md_h, &write_md_h, &write_base);
-
-    ret = PtlFetchAtomic(result_md_h,
-                         (char*) result_val - (char*) result_base,
-                         write_md_h,
-                         (char*) &write_val - (char*) write_base,
+    ret = PtlFetchAtomic(module->md_h,
+                         (ptl_size_t) result_val,
+                         module->md_h,
+                         (ptl_size_t) &write_val,
                          sizeof(int64_t),
                          ompi_osc_portals4_get_peer(module, target),
                          module->pt_idx,
@@ -147,7 +133,7 @@ lk_add64(ompi_osc_portals4_module_t *module,
 
 
 static inline int
-start_exclusive(ompi_osc_portals4_module_t *module, 
+start_exclusive(ompi_osc_portals4_module_t *module,
                 int target)
 {
     int64_t result;
@@ -165,7 +151,7 @@ start_exclusive(ompi_osc_portals4_module_t *module,
 
 
 static inline int
-end_exclusive(ompi_osc_portals4_module_t *module, 
+end_exclusive(ompi_osc_portals4_module_t *module,
               int target)
 {
     int ret;
@@ -176,7 +162,7 @@ end_exclusive(ompi_osc_portals4_module_t *module,
 
 
 static inline int
-start_shared(ompi_osc_portals4_module_t *module, 
+start_shared(ompi_osc_portals4_module_t *module,
              int target)
 {
     int64_t result;
@@ -200,7 +186,7 @@ start_shared(ompi_osc_portals4_module_t *module,
 
 
 static inline int
-end_shared(ompi_osc_portals4_module_t *module, 
+end_shared(ompi_osc_portals4_module_t *module,
            int target)
 {
     int64_t result;
@@ -219,7 +205,7 @@ ompi_osc_portals4_lock(int lock_type,
 {
     ompi_osc_portals4_module_t *module =
         (ompi_osc_portals4_module_t*) win->w_osc_module;
-    ompi_osc_portals4_outstanding_lock_t* lock;    
+    ompi_osc_portals4_outstanding_lock_t* lock;
     int ret;
 
     module->passive_target_access_epoch = true;
@@ -297,7 +283,7 @@ ompi_osc_portals4_lock_all(int assert,
 {
     ompi_osc_portals4_module_t *module =
         (ompi_osc_portals4_module_t*) win->w_osc_module;
-    ompi_osc_portals4_outstanding_lock_t* lock;    
+    ompi_osc_portals4_outstanding_lock_t* lock;
     int ret = OMPI_SUCCESS;
 
     module->passive_target_access_epoch = true;

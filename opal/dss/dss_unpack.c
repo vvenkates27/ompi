@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -9,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
+ * Copyright (c) 2012-2015 Los Alamos National Security, Inc.  All rights reserved.
  * Copyright (c) 2014      Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
@@ -193,7 +194,7 @@ int opal_dss_unpack_int(opal_buffer_t *buffer, void *dest,
         /* slow path - types are different sizes */
         UNPACK_SIZE_MISMATCH(int, remote_type, ret);
     }
-    
+
     return ret;
 }
 
@@ -226,7 +227,7 @@ int opal_dss_unpack_sizet(opal_buffer_t *buffer, void *dest,
         /* slow path - types are different sizes */
         UNPACK_SIZE_MISMATCH(size_t, remote_type, ret);
     }
-    
+
     return ret;
 }
 
@@ -259,7 +260,7 @@ int opal_dss_unpack_pid(opal_buffer_t *buffer, void *dest,
         /* slow path - types are different sizes */
         UNPACK_SIZE_MISMATCH(pid_t, remote_type, ret);
     }
-    
+
     return ret;
 }
 
@@ -430,6 +431,7 @@ int opal_dss_unpack_float(opal_buffer_t *buffer, void *dest,
         tmp = strtof(convert, NULL);
         memcpy(&desttmp[i], &tmp, sizeof(tmp));
         free(convert);
+        convert = NULL;
     }
     return OPAL_SUCCESS;
 }
@@ -460,6 +462,7 @@ int opal_dss_unpack_double(opal_buffer_t *buffer, void *dest,
         tmp = strtod(convert, NULL);
         memcpy(&desttmp[i], &tmp, sizeof(tmp));
         free(convert);
+        convert = NULL;
     }
     return OPAL_SUCCESS;
 }
@@ -585,10 +588,10 @@ int opal_dss_unpack_pstat(opal_buffer_t *buffer, void *dest,
     int32_t i, n, m;
     int ret;
     char *cptr;
-    
+
     ptr = (opal_pstats_t **) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         /* allocate the new object */
         ptr[i] = OBJ_NEW(opal_pstats_t);
@@ -665,7 +668,7 @@ int opal_dss_unpack_pstat(opal_buffer_t *buffer, void *dest,
             return ret;
         }
     }
-    
+
     return OPAL_SUCCESS;
 }
 
@@ -853,10 +856,10 @@ int opal_dss_unpack_node_stat(opal_buffer_t *buffer, void *dest,
     opal_node_stats_t **ptr;
     int32_t i, n, m;
     int ret;
-    
+
     ptr = (opal_node_stats_t **) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         /* allocate the new object */
         ptr[i] = OBJ_NEW(opal_node_stats_t);
@@ -934,7 +937,7 @@ int opal_dss_unpack_node_stat(opal_buffer_t *buffer, void *dest,
             return ret;
         }
     }
-    
+
     return OPAL_SUCCESS;
 }
 
@@ -950,7 +953,7 @@ int opal_dss_unpack_value(opal_buffer_t *buffer, void *dest,
 
     ptr = (opal_value_t **) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         /* allocate the new object */
         ptr[i] = OBJ_NEW(opal_value_t);
@@ -1392,7 +1395,7 @@ int opal_dss_unpack_buffer_contents(opal_buffer_t *buffer, void *dest,
 
     ptr = (opal_buffer_t **) dest;
     n = *num_vals;
-    
+
     for (i = 0; i < n; ++i) {
         /* allocate the new object */
         ptr[i] = OBJ_NEW(opal_buffer_t);

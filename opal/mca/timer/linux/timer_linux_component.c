@@ -6,7 +6,7 @@
  * Copyright (c) 2004-2014 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -14,18 +14,17 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
 #include "opal_config.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 
 #include "opal/mca/timer/timer.h"
 #include "opal/mca/timer/base/base.h"
@@ -45,7 +44,7 @@ opal_timer_t (*opal_timer_base_get_cycles)(void) = opal_timer_base_get_cycles_sy
 opal_timer_t (*opal_timer_base_get_usec)(void) = opal_timer_base_get_usec_sys_timer;
 #endif  /* OPAL_HAVE_CLOCK_GETTIME */
 
-opal_timer_t opal_timer_linux_freq;
+opal_timer_t opal_timer_linux_freq = {0};
 
 static int opal_timer_linux_open(void);
 
@@ -128,7 +127,7 @@ static int opal_timer_linux_find_freq(void)
             ret = sscanf(loc, "%f", &cpu_f);
             if (1 == ret) {
                 /* numer is in MHz - convert to Hz and make an integer */
-                opal_timer_linux_freq = (opal_timer_t) cpu_f * 1000000;
+                opal_timer_linux_freq = (opal_timer_t) (cpu_f * 1000000);
             }
         }
     }

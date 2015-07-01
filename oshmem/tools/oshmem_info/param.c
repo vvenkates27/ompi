@@ -119,7 +119,7 @@ void oshmem_info_do_config(bool want_all)
     char *ft_support;
     char *crdebug_support;
     char *topology_support;
-    
+
     /* Do a little preprocessor trickery here to figure opal_info_out the
      * tri-state of MPI_PARAM_CHECK (which will be either 0, 1, or
      * ompi_mpi_param_check).  The preprocessor will only allow
@@ -146,7 +146,7 @@ void oshmem_info_do_config(bool want_all)
 
     /* setup the strings that don't require allocations*/
     cxx = OMPI_BUILD_CXX_BINDINGS ? "yes" : "no";
-    if (OMPI_BUILD_FORTRAN_USEMPI_BINDINGS) {
+    if (OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_USEMPI_BINDINGS) {
         if (OMPI_FORTRAN_HAVE_IGNORE_TKR) {
             fortran_usempi = "yes (full: ignore TKR)";
         } else {
@@ -155,7 +155,7 @@ void oshmem_info_do_config(bool want_all)
     } else {
         fortran_usempi = "no";
     }
-    fortran_usempif08 = OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS ? "yes" : "no";
+    fortran_usempif08 = OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_USEMPIF08_BINDINGS ? "yes" : "no";
     fortran_have_f08_assumed_rank = OMPI_FORTRAN_HAVE_F08_ASSUMED_RANK ?
         "yes" : "no";
     fortran_build_f08_subarrays = OMPI_BUILD_FORTRAN_F08_SUBARRAYS ?
@@ -174,7 +174,7 @@ void oshmem_info_do_config(bool want_all)
     /* Build a string describing what level of compliance the mpi_f08
        module has */
     char f08_msg[1024];
-    if (OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS) {
+    if (OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_USEMPIF08_BINDINGS) {
 
         /* Do we have everything? */
         if (OMPI_BUILD_FORTRAN_F08_SUBARRAYS &&
@@ -230,9 +230,9 @@ void oshmem_info_do_config(bool want_all)
     cprofiling = OMPI_ENABLE_MPI_PROFILING ? "yes" : "no";
     cxxprofiling = (OMPI_BUILD_CXX_BINDINGS && OMPI_ENABLE_MPI_PROFILING) ? "yes" : "no";
     cxxexceptions = (OMPI_BUILD_CXX_BINDINGS && OMPI_HAVE_CXX_EXCEPTION_SUPPORT) ? "yes" : "no";
-    fortran_mpifh_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_MPIFH_BINDINGS) ? "yes" : "no";
-    fortran_usempi_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_USEMPI_BINDINGS) ? "yes" : "no";
-    fortran_usempif08_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS) ? "yes" : "no";
+    fortran_mpifh_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_MPIFH_BINDINGS) ? "yes" : "no";
+    fortran_usempi_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_USEMPI_BINDINGS) ? "yes" : "no";
+    fortran_usempif08_profiling = (OMPI_ENABLE_MPI_PROFILING && OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_USEMPIF08_BINDINGS) ? "yes" : "no";
     have_dl = OPAL_HAVE_DL_SUPPORT ? "yes" : "no";
 #if OMPI_RTE_ORTE
     mpirun_prefix_by_default = ORTE_WANT_ORTERUN_PREFIX_BY_DEFAULT ? "yes" : "no";
@@ -244,7 +244,7 @@ void oshmem_info_do_config(bool want_all)
     topology_support = OPAL_HAVE_HWLOC ? "yes" : "no";
 
     /* setup strings that require allocation */
-    if (OMPI_BUILD_FORTRAN_MPIFH_BINDINGS) {
+    if (OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_MPIFH_BINDINGS) {
         (void)asprintf(&fortran_mpifh, "yes (%s)",
                        (OPAL_HAVE_WEAK_SYMBOLS ? "all" :
                         (OMPI_FORTRAN_CAPS ? "caps" :
@@ -401,9 +401,7 @@ void oshmem_info_do_config(bool want_all)
 
         /* May or may not have the other Fortran sizes */
 
-        if (OMPI_BUILD_FORTRAN_MPIFH_BINDINGS ||
-            OMPI_BUILD_FORTRAN_USEMPI_BINDINGS ||
-            OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS) {
+        if (OMPI_BUILD_FORTRAN_BINDINGS >= OMPI_FORTRAN_MPIFH_BINDINGS) {
             opal_info_out("Fort have integer1", "compiler:fortran:have:integer1",
                           OMPI_HAVE_FORTRAN_INTEGER1 ? "yes" : "no");
             opal_info_out("Fort have integer2", "compiler:fortran:have:integer2",
@@ -605,7 +603,7 @@ void oshmem_info_do_config(bool want_all)
     opal_info_out("MPI_MAX_DATAREP_STRING", "options:mpi-max-datarep-string",
                   "IO interface not provided");
 #endif
-    
+
     /* This block displays all the options with which the current
      * installation of oshmem was configured. */
     {
@@ -613,7 +611,7 @@ void oshmem_info_do_config(bool want_all)
         char *oshmem_compat = OSHMEM_SPEC_COMPAT ? "yes" : "no";
         char *oshmem_param_check = OSHMEM_PARAM_CHECK ? "yes" : "no";
         char *oshmem_profiling = OSHMEM_PROFILING ? "yes" : "no";
-        
+
         opal_info_out("OSHMEM C bindings", "oshmem:bindings:c", "yes");
         opal_info_out("OSHMEM Fortran bindings", "oshmem:bindings:fort", oshmem_fortran);
         opal_info_out("OSHMEM SGI/Quadrics mode", "oshmem:options:spec_compat", oshmem_compat);

@@ -6,7 +6,7 @@
  * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -14,9 +14,9 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -165,5 +165,16 @@ OPAL_DECLSPEC OBJ_CLASS_DECLARATION(mca_base_var_enum_t);
  */
 OPAL_DECLSPEC int mca_base_var_enum_create (const char *name, const mca_base_var_enum_value_t values[],
                                             mca_base_var_enum_t **enumerator);
+
+/* standard enumerators. it is invalid to call OBJ_RELEASE on any of these enumerators */
+/**
+ * Boolean enumerator
+ *
+ * This enumerator maps:
+ *   positive integer, true, yes, enabled, t -> 1
+ *   0, false, no, disabled, f -> 0
+ */
+extern mca_base_var_enum_t mca_base_var_enum_bool;
+
 
 #endif /* !defined(MCA_BASE_VAR_ENUM_H) */

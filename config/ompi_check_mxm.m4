@@ -12,7 +12,7 @@ dnl
 
 # OMPI_CHECK_MXM(prefix, [action-if-found], [action-if-not-found])
 # --------------------------------------------------------
-# check if MXM support can be found.  sets prefix_{CPPFLAGS, 
+# check if MXM support can be found.  sets prefix_{CPPFLAGS,
 # LDFLAGS, LIBS} as needed and runs action-if-found if there is
 # support, otherwise executes action-if-not-found
 AC_DEFUN([OMPI_CHECK_MXM],[
@@ -38,7 +38,7 @@ AC_DEFUN([OMPI_CHECK_MXM],[
            AS_IF([test ! -z "$with_mxm_libdir" && test "$with_mxm_libdir" != "yes"],
                  [ompi_check_mxm_libdir="$with_mxm_libdir"])
 
-           ompi_check_mxm_extra_libs="-L$ompi_check_mxm_libdir"
+           AS_IF([test ! -z "$ompi_check_mxm_libdir"], [ompi_check_mxm_extra_libs="-L$ompi_check_mxm_libdir"],[])
 
            OPAL_CHECK_PACKAGE([$1],
                               [mxm/api/mxm_api.h],

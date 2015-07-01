@@ -4,7 +4,7 @@ dnl Copyright (c) 2004-2005 The Trustees of Indiana University.
 dnl                         All rights reserved.
 dnl Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
 dnl                         All rights reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
@@ -12,9 +12,9 @@ dnl Copyright (c) 2011-2012 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
@@ -28,12 +28,14 @@ AC_DEFUN([OMPI_FORTRAN_GET_VALUE_TRUE],[
         unset ompi_cv_fortran_true_value
     fi
 
-    AS_VAR_PUSHDEF([fortran_true_var], 
+    AS_VAR_PUSHDEF([fortran_true_var],
                    [ompi_cv_fortran_true_value])
 
     AC_CACHE_CHECK([Fortran value for .TRUE. logical type],
         fortran_true_var,
-        [if test "$1" = "none" || test $OMPI_WANT_FORTRAN_BINDINGS -eq 0 || test $ompi_fortran_happy -eq 0 ; then
+        [if test "$1" = "none" || \
+            test $OMPI_TRY_FORTRAN_BINDINGS -eq $OMPI_FORTRAN_NO_BINDINGS || \
+            test $ompi_fortran_happy -eq 0 ; then
              value=77
          else
              #
@@ -122,7 +124,7 @@ EOF
         ])
 
     AS_VAR_COPY([ompi_fortran_true_value], [fortran_true_var])
-    AC_DEFINE_UNQUOTED([OMPI_FORTRAN_VALUE_TRUE], 
+    AC_DEFINE_UNQUOTED([OMPI_FORTRAN_VALUE_TRUE],
         [$ompi_fortran_true_value],
         [Fortran value for LOGICAL .TRUE. value])
     AS_VAR_POPDEF([fortran_true_var])

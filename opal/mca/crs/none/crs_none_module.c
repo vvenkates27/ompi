@@ -1,20 +1,21 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  *
  * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
 #include "opal_config.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 #include <sys/types.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -60,7 +61,7 @@ int opal_crs_none_checkpoint(pid_t pid,
                              opal_crs_state_type_t *state)
 {
     *state = OPAL_CRS_CONTINUE;
-    
+
     snapshot->component_name  = strdup("none");
     snapshot->cold_start      = false;
 
@@ -101,8 +102,7 @@ int opal_crs_none_restart(opal_crs_base_snapshot_t *base_snapshot, bool spawn_ch
             opal_output(0,
                         "crs:none: checkpoint(): Error: Unable to open the file (%s)",
                         base_snapshot->metadata_filename);
-            exit_status = OPAL_ERROR;
-            goto cleanup;
+            return OPAL_ERROR;
         }
     }
 
@@ -131,10 +131,9 @@ int opal_crs_none_restart(opal_crs_base_snapshot_t *base_snapshot, bool spawn_ch
     if( !spawn_child ) {
         opal_output_verbose(10, opal_crs_base_framework.framework_output,
                             "crs:none: none_restart: exec :(%s, %s):",
-                            strdup(cr_argv[0]),
-                            opal_argv_join(cr_argv, ' '));
+                            cr_argv[0], tmp_argv[0]);
 
-        status = execvp(strdup(cr_argv[0]), cr_argv);
+        status = execvp(cr_argv[0], cr_argv);
 
         if(status < 0) {
             opal_output(opal_crs_base_framework.framework_output,
@@ -152,11 +151,12 @@ int opal_crs_none_restart(opal_crs_base_snapshot_t *base_snapshot, bool spawn_ch
     }
 
  cleanup:
-    if (NULL != base_snapshot->metadata) {
-        fclose(base_snapshot->metadata);
+    if (cr_argv) {
+        opal_argv_free (cr_argv);
     }
-    base_snapshot->metadata = NULL;
-    
+
+    fclose(base_snapshot->metadata);
+
     return exit_status;
 }
 

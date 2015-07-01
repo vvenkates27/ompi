@@ -14,10 +14,12 @@
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  * These symbols are in a file by themselves to provide nice linker
@@ -57,9 +59,9 @@ int   ompi_coll_tuned_alltoall_intermediate_msg = 3000;
 
 /* forced alogrithm variables */
 /* indices for the MCA parameters */
-coll_tuned_force_algorithm_mca_param_indices_t ompi_coll_tuned_forced_params[COLLCOUNT];
+coll_tuned_force_algorithm_mca_param_indices_t ompi_coll_tuned_forced_params[COLLCOUNT] = {{0}};
 /* max algorithm values */
-int ompi_coll_tuned_forced_max_algorithms[COLLCOUNT];
+int ompi_coll_tuned_forced_max_algorithms[COLLCOUNT] = {0};
 
 /*
  * Local function
@@ -75,7 +77,7 @@ static int tuned_close(void);
 
 mca_coll_tuned_component_t mca_coll_tuned_component = {
     /* First, fill in the super */
-    {   
+    {
         /* First, the mca_component_t struct containing meta information
            about the component itself */
         .collm_version = {
@@ -106,13 +108,13 @@ mca_coll_tuned_component_t mca_coll_tuned_component = {
     0,
 
     /* Tuned component specific information */
-    NULL /* ompi_coll_alg_rule_t ptr */       
+    NULL /* ompi_coll_alg_rule_t ptr */
 };
 
 static int tuned_register(void)
 {
 
-    /* Use a low priority, but allow other components to be lower */    
+    /* Use a low priority, but allow other components to be lower */
     ompi_coll_tuned_priority = 30;
     (void) mca_base_component_var_register(&mca_coll_tuned_component.super.collm_version,
                                            "priority", "Priority of the tuned coll component",
@@ -216,13 +218,13 @@ static int tuned_open(void)
     /* this is useful for benchmarking and user knows best tuning */
     /* as this is the component we only lookup the indicies of the mca params */
     /* the actual values are looked up during comm create via module init */
-   
+
     /* intra functions first */
     /* if dynamic rules allowed then look up dynamic rules config filename, else we leave it an empty filename (NULL) */
     /* by default DISABLE dynamic rules and instead use fixed [if based] rules */
     if (ompi_coll_tuned_use_dynamic_rules) {
         if( ompi_coll_tuned_dynamic_rules_filename ) {
-            OPAL_OUTPUT((ompi_coll_tuned_stream,"coll:tuned:component_open Reading collective rules file [%s]", 
+            OPAL_OUTPUT((ompi_coll_tuned_stream,"coll:tuned:component_open Reading collective rules file [%s]",
                          ompi_coll_tuned_dynamic_rules_filename));
             rc = ompi_coll_tuned_read_rules_config_file( ompi_coll_tuned_dynamic_rules_filename,
                                                          &(mca_coll_tuned_component.all_base_rules), COLLCOUNT);
@@ -263,7 +265,7 @@ static void
 mca_coll_tuned_module_construct(mca_coll_tuned_module_t *module)
 {
     mca_coll_tuned_module_t *tuned_module = (mca_coll_tuned_module_t*) module;
-    
+
     for( int i = 0; i < COLLCOUNT; i++ ) {
         tuned_module->user_forced[i].algorithm = 0;
         tuned_module->com_rules[i] = NULL;

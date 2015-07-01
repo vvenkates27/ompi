@@ -1,10 +1,12 @@
 /*
  * Copyright (c) 2010-2013 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015      Intel, Inc. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  */
@@ -19,7 +21,7 @@
 #include "opal/mca/if/base/static-components.h"
 
 /* instantiate the global list of interfaces */
-opal_list_t opal_if_list;
+opal_list_t opal_if_list = {{0}};
 bool opal_if_do_not_resolve = false;
 bool opal_if_retain_loopback = false;
 
@@ -62,7 +64,7 @@ static int opal_if_base_open (mca_base_open_flag_t flags)
         return OPAL_SUCCESS;
     }
     frameopen = true;
-    
+
     /* setup the global list */
     OBJ_CONSTRUCT(&opal_if_list, opal_list_t);
 
@@ -77,7 +79,7 @@ static int opal_if_base_close(void)
     if (!frameopen) {
         return OPAL_SUCCESS;
     }
-    
+
     while (NULL != (item = opal_list_remove_first(&opal_if_list))) {
         OBJ_RELEASE(item);
     }

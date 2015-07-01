@@ -24,7 +24,7 @@
  * In windows, many of the socket functions return an EWOULDBLOCK
  * instead of things like EAGAIN, EINPROGRESS, etc. It has been
  * verified that this will not conflict with other error codes that
- * are returned by these functions under UNIX/Linux environments 
+ * are returned by these functions under UNIX/Linux environments
  */
 
 #include "orte_config.h"
@@ -63,6 +63,7 @@
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/ess/ess.h"
 #include "orte/mca/state/state.h"
+#include "orte/util/listener.h"
 #include "orte/util/name_fns.h"
 #include "orte/util/parse_options.h"
 #include "orte/util/session_dir.h"
@@ -73,7 +74,6 @@
 #include "orte/mca/oob/usock/oob_usock_component.h"
 #include "orte/mca/oob/usock/oob_usock_peer.h"
 #include "orte/mca/oob/usock/oob_usock_connection.h"
-#include "orte/mca/oob/usock/oob_usock_listener.h"
 #include "orte/mca/oob/usock/oob_usock_ping.h"
 /*
  * Local utility functions
@@ -83,7 +83,7 @@ static int usock_component_register(void);
 static int usock_component_open(void);
 static int usock_component_close(void);
 
-static bool component_available(void);
+static int component_available(void);
 static int component_startup(void);
 static void component_shutdown(void);
 static int component_send(orte_rml_send_t *msg);
@@ -155,7 +155,7 @@ static int usock_component_register(void)
 }
 
 
-static bool component_available(void)
+static int component_available(void)
 {
     opal_output_verbose(5, orte_oob_base_framework.framework_output,
                         "oob:usock: component_available called");
@@ -164,22 +164,41 @@ static bool component_available(void)
     if (!orte_create_session_dirs ||
         NULL == orte_process_info.tmpdir_base ||
         NULL == orte_process_info.top_session_dir) {
-        return false;
+        return ORTE_ERR_NOT_SUPPORTED;
     }
 
     /* this component is not available to tools */
     if (ORTE_PROC_IS_TOOL) {
-        return false;
+        return ORTE_ERR_NOT_AVAILABLE;
     }
 
-    /* direct-launched apps cannot use it either */
-    if (ORTE_PROC_IS_APP &&
-        (NULL == orte_process_info.my_daemon_uri)) {
-        return false;
+    if (ORTE_PROC_IS_APP) {
+        if (NULL == orte_process_info.my_daemon_uri) {
+            /* direct-launched apps cannot use it */
+           return ORTE_ERR_NOT_AVAILABLE;
+        }
+        /* apps launched by daemons *must* use it */
+        return ORTE_ERR_FORCE_SELECT;
     }
 
     /* otherwise, we are available */
-    return true;
+    return ORTE_SUCCESS;
+}
+
+/*
+ * Handler for accepting connections from the event library
+ */
+static void connection_event_handler(int incoming_sd, short flags, void* cbdata)
+{
+    orte_pending_connection_t *pending = (orte_pending_connection_t*)cbdata;
+    int sd;
+
+    sd = pending->fd;
+    pending->fd = -1;
+    OBJ_RELEASE(pending);
+
+    /* process the connection */
+    mca_oob_usock_module.api.accept_connection(sd, NULL);
 }
 
 /* Start the module */
@@ -202,11 +221,10 @@ static int component_startup(void)
     opal_output_verbose(2, orte_oob_base_framework.framework_output,
                         "SUNPATH: %s", mca_oob_usock_component.address.sun_path);
 
-    /* if we are a daemon/HNP, start the listening event - this will create
-     * the rendezvous link
-     */
+    /* if we are a daemon/HNP, register our listener */
     if (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP) {
-        if (ORTE_SUCCESS != (rc = orte_oob_usock_start_listening())) {
+        if (ORTE_SUCCESS != (rc = orte_register_listener((struct sockaddr*)&mca_oob_usock_component.address, sizeof(struct sockaddr_un),
+                                                         orte_event_base, connection_event_handler))) {
             ORTE_ERROR_LOG(rc);
         }
     } else {
@@ -232,10 +250,6 @@ static void component_shutdown(void)
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
 
     if (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP) {
-        if (mca_oob_usock_component.listener_ev_active) {
-            opal_event_del(&mca_oob_usock_component.listener_event);
-            mca_oob_usock_component.listener_ev_active = false;
-        }
         /* delete the rendezvous file */
         unlink(mca_oob_usock_component.address.sun_path);
     }
@@ -251,9 +265,9 @@ static int component_send(orte_rml_send_t *msg)
     orte_proc_t *proc;
 
     opal_output_verbose(5, orte_oob_base_framework.framework_output,
-                        "%s oob:usock:send_nb to peer %s:%d",
+                        "%s oob:usock:send_nb to peer %s:%d to channel=%d seq_num =%d",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                        ORTE_NAME_PRINT(&msg->dst), msg->tag);
+                        ORTE_NAME_PRINT(&msg->dst), msg->tag, msg->dst_channel, msg->seq_num);
 
     if (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP) {
         /* daemons can only reach local procs */

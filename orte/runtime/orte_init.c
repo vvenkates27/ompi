@@ -10,11 +10,11 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2013 Los Alamos National Security, LLC.  All rights
- *                         reserved. 
+ *                         reserved.
  * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007-2008 Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
- * Copyright (c) 2014      Research Organization for Information Science
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  *
  * $COPYRIGHT$
@@ -46,6 +46,7 @@
 #include "orte/mca/ess/base/base.h"
 #include "orte/mca/ess/ess.h"
 #include "orte/mca/errmgr/errmgr.h"
+#include "orte/util/listener.h"
 #include "orte/util/name_fns.h"
 #include "orte/util/proc_info.h"
 #include "orte/util/error_strings.h"
@@ -97,10 +98,10 @@ static int _convert_string_to_process_name(opal_process_name_t *name,
 int orte_initialized = 0;
 bool orte_finalizing = false;
 bool orte_debug_flag = false;
-int orte_debug_verbosity;
+int orte_debug_verbosity = -1;
 char *orte_prohibited_session_dirs = NULL;
 bool orte_create_session_dirs = true;
-opal_event_base_t *orte_event_base;
+opal_event_base_t *orte_event_base = {0};
 bool orte_event_base_active = true;
 bool orte_proc_is_bound = false;
 int orte_progress_thread_debug = -1;
@@ -110,7 +111,7 @@ hwloc_cpuset_t orte_proc_applied_binding = NULL;
 
 orte_process_name_t orte_name_wildcard = {ORTE_JOBID_WILDCARD, ORTE_VPID_WILDCARD};
 
-orte_process_name_t orte_name_invalid = {ORTE_JOBID_INVALID, ORTE_VPID_INVALID}; 
+orte_process_name_t orte_name_invalid = {ORTE_JOBID_INVALID, ORTE_VPID_INVALID};
 
 
 #if OPAL_CC_USE_PRAGMA_IDENT
@@ -137,14 +138,14 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
         error = "opal_init";
         goto error;
     }
-    
+
     /* Convince OPAL to use our naming scheme */
     opal_process_name_print = _process_name_print_for_opal;
     opal_vpid_print = _vpid_print_for_opal;
     opal_jobid_print = _jobid_print_for_opal;
     opal_compare_proc = _process_name_compare;
     opal_convert_string_to_process_name = _convert_string_to_process_name;
-    
+
     /* ensure we know the type of proc for when we finalize */
     orte_process_info.proc_type = flags;
 
@@ -153,19 +154,19 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
         error = "orte_locks_init";
         goto error;
     }
-    
+
     /* Register all MCA Params */
     if (ORTE_SUCCESS != (ret = orte_register_params())) {
         error = "orte_register_params";
         goto error;
     }
-    
+
     /* setup the orte_show_help system */
     if (ORTE_SUCCESS != (ret = orte_show_help_init())) {
         error = "opal_output_init";
         goto error;
     }
-    
+
     /* register handler for errnum -> string conversion */
     opal_error_register("ORTE", ORTE_ERR_BASE, ORTE_ERR_MAX, orte_err2str);
 
@@ -201,14 +202,6 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
         error = "opal dstore internal";
         ret = ORTE_ERR_FATAL;
         goto error;
-    }
-
-    if (ORTE_PROC_IS_APP) {
-        if (0 > (opal_dstore_modex = opal_dstore.open("MODEX", "sm,hash", NULL))) {
-            error = "opal dstore modex";
-            ret = ORTE_ERR_FATAL;
-            goto error;
-        }
     }
 
     if (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP) {
@@ -258,9 +251,19 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
     opal_timing_set_jobid(ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
 #endif
 
+    if (ORTE_PROC_IS_HNP || ORTE_PROC_IS_DAEMON) {
+        /* start listening - will be ignored if no listeners
+         * were registered */
+        if (ORTE_SUCCESS != (ret = orte_start_listening())) {
+            ORTE_ERROR_LOG(ret);
+            error = "orte_start_listening";
+            goto error;
+        }
+    }
+
     /* All done */
     return ORTE_SUCCESS;
-    
+
  error:
     if (ORTE_ERR_SILENT != ret) {
         orte_show_help("help-orte-runtime",

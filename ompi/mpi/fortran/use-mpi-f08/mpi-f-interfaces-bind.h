@@ -1,12 +1,14 @@
 ! -*- f90 -*-
 !
-! Copyright (c) 2009-2014 Cisco Systems, Inc.  All rights reserved.
+! Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 ! Copyright (c) 2009-2012 Los Alamos National Security, LLC.
 !                         All rights reserved.
 ! Copyright (c) 2012      The University of Tennessee and The University
 !                         of Tennessee Research Foundation.  All rights
 !                         reserved.
 ! Copyright (c) 2012      Inria.  All rights reserved.
+! Copyright (c) 2015      Research Organization for Information Science
+!                         and Technology (RIST). All rights reserved.
 ! $COPYRIGHT$
 !
 ! This file provides the interface specifications for the MPI Fortran
@@ -189,8 +191,9 @@ end subroutine ompi_buffer_attach_f
 
 subroutine ompi_buffer_detach_f(buffer_addr,size,ierror) &
    BIND(C, name="ompi_buffer_detach_f")
+   USE, INTRINSIC ::  ISO_C_BINDING, ONLY : C_PTR
    implicit none
-   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buffer_addr
+   TYPE(C_PTR), INTENT(OUT) ::  buffer_addr
    INTEGER, INTENT(OUT) :: size
    INTEGER, INTENT(OUT) :: ierror
 end subroutine ompi_buffer_detach_f
@@ -1778,6 +1781,24 @@ function  ompi_wtime_f() &
    DOUBLE PRECISION :: ompi_wtime_f
 end function  ompi_wtime_f
 
+function ompi_aint_add_f(base,diff) &
+   BIND(C, name="ompi_aint_add_f")
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: base
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: diff
+   INTEGER(MPI_ADDRESS_KIND) :: ompi_aint_add_f
+end function ompi_aint_add_f
+
+function ompi_aint_diff_f(addr1,addr2) &
+   BIND(C, name="ompi_aint_diff_f")
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: addr1
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: addr2
+   INTEGER(MPI_ADDRESS_KIND) :: ompi_aint_diff_f
+end function ompi_aint_diff_f
+
 subroutine ompi_abort_f(comm,errorcode,ierror) &
    BIND(C, name="ompi_abort_f")
    implicit none
@@ -1927,9 +1948,8 @@ end subroutine ompi_finalize_f
 
 subroutine ompi_free_mem_f(base,ierror) &
    BIND(C, name="ompi_free_mem_f")
-   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
    implicit none
-   INTEGER(MPI_ADDRESS_KIND), DIMENSION(*) OMPI_ASYNCHRONOUS :: base
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: base
    INTEGER, INTENT(OUT) :: ierror
 end subroutine ompi_free_mem_f
 
@@ -2126,7 +2146,8 @@ end subroutine ompi_comm_spawn_f
 ! TODO - FIXME to use arrays of strings and pass strlen
 subroutine ompi_comm_spawn_multiple_f(count,array_of_commands, &
                                       array_of_argv, array_of_maxprocs,array_of_info,root, &
-                                      comm,intercomm,array_of_errcodes,ierror) &
+                                      comm,intercomm,array_of_errcodes,ierror, &
+                                      cmd_len, argv_len) &
    BIND(C, name="ompi_comm_spawn_multiple_f")
    use, intrinsic :: ISO_C_BINDING, only : C_CHAR
    implicit none
@@ -2138,6 +2159,7 @@ subroutine ompi_comm_spawn_multiple_f(count,array_of_commands, &
    INTEGER, INTENT(OUT) :: intercomm
    INTEGER, INTENT(OUT) :: array_of_errcodes(*)
    INTEGER, INTENT(OUT) :: ierror
+   INTEGER, VALUE, INTENT(IN) :: cmd_len, argv_len
 end subroutine ompi_comm_spawn_multiple_f
 
 subroutine ompi_lookup_name_f(service_name,info,port_name,ierror, &
@@ -2369,6 +2391,34 @@ subroutine ompi_win_create_f(base,size,disp_unit,info,comm,win,ierror) &
    INTEGER, INTENT(OUT) :: ierror
 end subroutine ompi_win_create_f
 
+subroutine ompi_win_create_dynamic_f(info,comm,win,ierror) &
+   BIND(C, name="ompi_win_create_dynamic_f")
+   implicit none
+   INTEGER, INTENT(IN) :: info
+   INTEGER, INTENT(IN) :: comm
+   INTEGER, INTENT(OUT) :: win
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_win_create_dynamic_f
+
+subroutine ompi_win_attach_f(win,base,size,ierror) &
+   BIND(C, name="ompi_win_attach_f")
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: base
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: size
+   INTEGER, INTENT(IN) :: win
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_win_attach_f
+
+subroutine ompi_win_detach_f(win,base,ierror) &
+   BIND(C, name="ompi_win_detach_f")
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: base
+   INTEGER, INTENT(IN) :: win
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_win_detach_f
+
 subroutine ompi_win_flush_f(rank,win,ierror) &
    BIND(C, name="ompi_win_flush_f")
    implicit none
@@ -2422,6 +2472,14 @@ subroutine ompi_win_get_group_f(win,group,ierror) &
    INTEGER, INTENT(OUT) :: ierror
 end subroutine ompi_win_get_group_f
 
+subroutine ompi_win_get_info_f(comm,info,ierror) &
+   BIND(C, name="ompi_win_get_info_f")
+   implicit none
+   INTEGER, INTENT(IN) :: comm
+   INTEGER, INTENT(OUT) :: info
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_win_get_info_f
+
 subroutine ompi_win_lock_f(lock_type,rank,assert,win,ierror) &
    BIND(C, name="ompi_win_lock_f")
    implicit none
@@ -2446,6 +2504,14 @@ subroutine ompi_win_post_f(group,assert,win,ierror) &
    INTEGER, INTENT(IN) :: win
    INTEGER, INTENT(OUT) :: ierror
 end subroutine ompi_win_post_f
+
+subroutine ompi_win_set_info_f(comm,info,ierror) &
+   BIND(C, name="ompi_win_set_info_f")
+   implicit none
+   INTEGER, INTENT(IN) :: comm
+   INTEGER, INTENT(IN) :: info
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_win_set_info_f
 
 subroutine ompi_win_shared_query_f(win, rank, size, disp_unit, baseptr,&
       ierror) BIND(C, name="ompi_win_shared_query_f")

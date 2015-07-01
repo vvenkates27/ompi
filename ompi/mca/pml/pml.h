@@ -6,22 +6,22 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
- *                         reserved. 
+ *                         reserved.
  * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 /**
  * @file
- * 
+ *
  * P2P Management Layer (PML)
  *
  * An MCA component type that provides the P2P interface functionality
@@ -49,7 +49,7 @@
  * make downcalls into the PML to provide the initial list of
  * processes (ompi_proc_t instances), and notification of changes
  * (add/delete).
- * 
+ *
  * The PML module must select the set of BTL components that are to be
  * used to reach a given destination. These should be cached on a PML
  * specific data structure that is hung off the ompi_proc_t.
@@ -59,13 +59,14 @@
  * over the available BTLs.
  *
  */
-                                                                                         
+
 #ifndef MCA_PML_H
 #define MCA_PML_H
 
 #include "ompi_config.h"
 #include "ompi/mca/mca.h"
 #include "mpi.h" /* needed for MPI_ANY_TAG */
+#include "ompi/mca/pml/pml_constants.h"
 
 BEGIN_C_DECLS
 
@@ -76,23 +77,9 @@ BEGIN_C_DECLS
 typedef uint64_t mca_pml_sequence_t;
 struct ompi_proc_t;
 
-typedef enum {
-    MCA_PML_BASE_SEND_SYNCHRONOUS,
-    MCA_PML_BASE_SEND_COMPLETE,
-    MCA_PML_BASE_SEND_BUFFERED,
-    MCA_PML_BASE_SEND_READY,
-    MCA_PML_BASE_SEND_STANDARD,
-    MCA_PML_BASE_SEND_SIZE
-} mca_pml_base_send_mode_t;
-
-
-#define OMPI_ANY_TAG    MPI_ANY_TAG
-#define OMPI_ANY_SOURCE MPI_ANY_SOURCE
-#define OMPI_PROC_NULL  MPI_PROC_NULL
-
 /**
  * MCA->PML Called by MCA framework to initialize the component.
- * 
+ *
  * @param priority (OUT) Relative priority or ranking used by MCA to
  * selected a component.
  *
@@ -105,7 +92,7 @@ typedef enum {
  * simultaneously or not.
  */
 typedef struct mca_pml_base_module_1_0_0_t * (*mca_pml_base_component_init_fn_t)(
-    int *priority, 
+    int *priority,
     bool enable_progress_threads,
     bool enable_mpi_threads);
 
@@ -151,7 +138,7 @@ typedef int (*mca_pml_base_module_add_procs_fn_t)(struct ompi_proc_t **procs, si
  * @param  nprocs  Size of process array
  * @return         OMPI_SUCCESS or failure status.
  *
- * Provides a notification to the PML that processes have 
+ * Provides a notification to the PML that processes have
  * gone away, and provides the PML the opportunity to cleanup
  * any data cached on the ompi_proc_t data structure.
  */
@@ -172,8 +159,8 @@ typedef int (*mca_pml_base_module_enable_fn_t)(
  * For non-threaded case, provides MCA the opportunity to
  * progress outstanding requests on all btls.
  *
- *  * @return        Count of "completions", a metric of 
- *                   how many items where completed in the call 
+ *  * @return        Count of "completions", a metric of
+ *                   how many items where completed in the call
  *                   to progress.
 */
 typedef int (*mca_pml_base_module_progress_fn_t)(void);
@@ -207,7 +194,7 @@ typedef int (*mca_pml_base_module_add_comm_fn_t)(struct ompi_communicator_t* com
 typedef int (*mca_pml_base_module_del_comm_fn_t)(struct ompi_communicator_t* comm);
 
 /**
- *  Initialize a persistent receive request. 
+ *  Initialize a persistent receive request.
  *
  *  @param buf (IN)         User buffer.
  *  @param count (IN)       Number of elements of the specified datatype.
@@ -219,17 +206,17 @@ typedef int (*mca_pml_base_module_del_comm_fn_t)(struct ompi_communicator_t* com
  *  @return                 OMPI_SUCCESS or failure status.
  */
 typedef int (*mca_pml_base_module_irecv_init_fn_t)(
-    void *buf,                           
-    size_t count,                         
-    struct ompi_datatype_t *datatype,              
+    void *buf,
+    size_t count,
+    struct ompi_datatype_t *datatype,
     int src,
-    int tag,                                
+    int tag,
     struct ompi_communicator_t* comm,
-    struct ompi_request_t **request           
+    struct ompi_request_t **request
 );
 
 /**
- *  Post a receive request. 
+ *  Post a receive request.
  *
  *  @param buf (IN)         User buffer.
  *  @param count (IN)       Number of elements of the specified datatype.
@@ -258,7 +245,7 @@ typedef int (*mca_pml_base_module_imrecv_fn_t)(
 );
 
 /**
- *  Post a receive and wait for completion. 
+ *  Post a receive and wait for completion.
  *
  *  @param buf (IN)         User buffer
  *  @param count (IN)       Number of elements of the specified datatype
@@ -287,7 +274,7 @@ typedef int (*mca_pml_base_module_mrecv_fn_t)(
 );
 
 /**
- *  Initialize a persistent send request. 
+ *  Initialize a persistent send request.
  *
  *  @param buf (IN)         User buffer.
  *  @param count (IN)       Number of elements of the specified datatype.
@@ -312,7 +299,7 @@ typedef int (*mca_pml_base_module_isend_init_fn_t)(
 
 
 /**
- *  Post a send request. 
+ *  Post a send request.
  *
  *  @param buf (IN)         User buffer.
  *  @param count (IN)       Number of elements of the specified datatype.
@@ -425,7 +412,7 @@ typedef int (*mca_pml_base_module_mprobe_fn_t)(
 
 /**
  * Cancel pending operation.
- * 
+ *
  * @param request (IN)    Request
  * @return                OMPI_SUCCESS or failure status.
  *
@@ -437,7 +424,7 @@ typedef int (*mca_pml_base_module_cancel_fn_t)(
 
 /**
  * Has a request been cancelled?
- * 
+ *
  * @param request (IN)    Request
  * @return                OMPI_SUCCESS or failure status.
  *

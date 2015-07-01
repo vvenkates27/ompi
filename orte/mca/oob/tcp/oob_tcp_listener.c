@@ -9,9 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2009-2014 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -25,7 +25,7 @@
  * In windows, many of the socket functions return an EWOULDBLOCK
  * instead of things like EAGAIN, EINPROGRESS, etc. It has been
  * verified that this will not conflict with other error codes that
- * are returned by these functions under UNIX/Linux environments 
+ * are returned by these functions under UNIX/Linux environments
  */
 
 #include "orte_config.h"
@@ -169,8 +169,8 @@ int orte_oob_tcp_start_listening(void)
 }
 
 /*
- * Create an IPv4 listen socket and bind to all interfaces.  
- * 
+ * Create an IPv4 listen socket and bind to all interfaces.
+ *
  * At one time, this also registered a callback with the event library
  * for when connections were received on the listen socket.  This is
  * no longer the case -- the caller must register any events required.
@@ -273,7 +273,7 @@ static int create_listen(void)
     if (NULL == ports) {
         return ORTE_ERROR;
     }
-    
+
     /* get the address info for this interface */
     ((struct sockaddr_in*) &inaddr)->sin_family = AF_INET;
     ((struct sockaddr_in*) &inaddr)->sin_addr.s_addr = INADDR_ANY;
@@ -295,20 +295,17 @@ static int create_listen(void)
         port = htons(port);
 
         ((struct sockaddr_in*) &inaddr)->sin_port = port;
-        
+
         /* create a listen socket for incoming connections on this port */
         sd = socket(AF_INET, SOCK_STREAM, 0);
         if (sd < 0) {
             if (EAFNOSUPPORT != opal_socket_errno) {
-                opal_output(0,"mca_oob_tcp_component_init: socket() failed: %s (%d)", 
+                opal_output(0,"mca_oob_tcp_component_init: socket() failed: %s (%d)",
                             strerror(opal_socket_errno), opal_socket_errno);
             }
             opal_argv_free(ports);
             return ORTE_ERR_IN_ERRNO;
         }
-
-        /* setup socket options */
-        orte_oob_tcp_set_socket_options(sd);
 
         /* Enable/disable reusing ports */
         if (orte_static_ports) {
@@ -324,7 +321,7 @@ static int create_listen(void)
             opal_argv_free(ports);
             return ORTE_ERROR;
         }
-    
+
         /* Set the socket to close-on-exec so that no children inherit
            this FD */
         if (opal_fd_set_cloexec(sd) != OPAL_SUCCESS) {
@@ -351,25 +348,25 @@ static int create_listen(void)
         }
         /* resolve assigned port */
         if (getsockname(sd, (struct sockaddr*)&inaddr, &addrlen) < 0) {
-            opal_output(0, "mca_oob_tcp_create_listen: getsockname(): %s (%d)", 
+            opal_output(0, "mca_oob_tcp_create_listen: getsockname(): %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             CLOSE_THE_SOCKET(sd);
             opal_argv_free(ports);
             return ORTE_ERROR;
         }
-        
+
         /* setup listen backlog to maximum allowed by kernel */
         if (listen(sd, SOMAXCONN) < 0) {
-            opal_output(0, "mca_oob_tcp_component_init: listen(): %s (%d)", 
+            opal_output(0, "mca_oob_tcp_component_init: listen(): %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             CLOSE_THE_SOCKET(sd);
             opal_argv_free(ports);
             return ORTE_ERROR;
         }
-        
+
         /* set socket up to be non-blocking, otherwise accept could block */
         if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
-            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_GETFL) failed: %s (%d)", 
+            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_GETFL) failed: %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             CLOSE_THE_SOCKET(sd);
             opal_argv_free(ports);
@@ -377,7 +374,7 @@ static int create_listen(void)
         }
         flags |= O_NONBLOCK;
         if (fcntl(sd, F_SETFL, flags) < 0) {
-            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_SETFL) failed: %s (%d)", 
+            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_SETFL) failed: %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             CLOSE_THE_SOCKET(sd);
             opal_argv_free(ports);
@@ -405,7 +402,7 @@ static int create_listen(void)
     }
     /* done with this, so release it */
     opal_argv_free(ports);
-    
+
     if (0 == opal_list_get_size(&mca_oob_tcp_component.listeners)) {
         /* cleanup */
         if (0 <= sd) {
@@ -419,8 +416,8 @@ static int create_listen(void)
 
 #if OPAL_ENABLE_IPV6
 /*
- * Create an IPv6 listen socket and bind to all interfaces.  
- * 
+ * Create an IPv6 listen socket and bind to all interfaces.
+ *
  * At one time, this also registered a callback with the event library
  * for when connections were received on the listen socket.  This is
  * no longer the case -- the caller must register any events required.
@@ -523,7 +520,7 @@ static int create_listen6(void)
     if (NULL == ports) {
         return ORTE_ERROR;
     }
-    
+
     /* get the address info for this interface */
     ((struct sockaddr_in6*) &inaddr)->sin6_family = AF_INET6;
     ((struct sockaddr_in6*) &inaddr)->sin6_addr = in6addr_any;
@@ -545,12 +542,12 @@ static int create_listen6(void)
         port = htons(port);
 
         ((struct sockaddr_in6*) &inaddr)->sin6_port = port;
-        
+
         /* create a listen socket for incoming connections on this port */
         sd = socket(AF_INET6, SOCK_STREAM, 0);
         if (sd < 0) {
             if (EAFNOSUPPORT != opal_socket_errno) {
-                opal_output(0,"mca_oob_tcp_component_init: socket() failed: %s (%d)", 
+                opal_output(0,"mca_oob_tcp_component_init: socket() failed: %s (%d)",
                             strerror(opal_socket_errno), opal_socket_errno);
             }
             return ORTE_ERR_IN_ERRNO;
@@ -566,10 +563,6 @@ static int create_listen6(void)
             return ORTE_ERROR;
         }
 
-
-        /* setup socket options */
-        orte_oob_tcp_set_socket_options(sd);
-
         /* Enable/disable reusing ports */
         if (orte_static_ports) {
             flags = 1;
@@ -584,7 +577,7 @@ static int create_listen6(void)
             opal_argv_free(ports);
             return ORTE_ERROR;
         }
-    
+
         if (bind(sd, (struct sockaddr*)&inaddr, addrlen) < 0) {
             if( (EADDRINUSE == opal_socket_errno) || (EADDRNOTAVAIL == opal_socket_errno) ) {
                 continue;
@@ -600,28 +593,28 @@ static int create_listen6(void)
         }
         /* resolve assigned port */
         if (getsockname(sd, (struct sockaddr*)&inaddr, &addrlen) < 0) {
-            opal_output(0, "mca_oob_tcp_create_listen: getsockname(): %s (%d)", 
+            opal_output(0, "mca_oob_tcp_create_listen: getsockname(): %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             CLOSE_THE_SOCKET(sd);
             return ORTE_ERROR;
         }
-        
+
         /* setup listen backlog to maximum allowed by kernel */
         if (listen(sd, SOMAXCONN) < 0) {
-            opal_output(0, "mca_oob_tcp_component_init: listen(): %s (%d)", 
+            opal_output(0, "mca_oob_tcp_component_init: listen(): %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             return ORTE_ERROR;
         }
-        
+
         /* set socket up to be non-blocking, otherwise accept could block */
         if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
-            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_GETFL) failed: %s (%d)", 
+            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_GETFL) failed: %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             return ORTE_ERROR;
         }
         flags |= O_NONBLOCK;
         if (fcntl(sd, F_SETFL, flags) < 0) {
-            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_SETFL) failed: %s (%d)", 
+            opal_output(0, "mca_oob_tcp_component_init: fcntl(F_SETFL) failed: %s (%d)",
                         strerror(opal_socket_errno), opal_socket_errno);
             return ORTE_ERROR;
         }
@@ -654,7 +647,7 @@ static int create_listen6(void)
 
     /* done with this, so release it */
     opal_argv_free(ports);
-    
+
     return ORTE_SUCCESS;
 }
 #endif
@@ -747,20 +740,43 @@ static void* listen_thread(opal_object_t *obj)
                                                 (struct sockaddr*)&(pending_connection->addr),
                                                 &addrlen);
                 if (pending_connection->fd < 0) {
-                    if (opal_socket_errno != EAGAIN || 
-                        opal_socket_errno != EWOULDBLOCK) {
-                        CLOSE_THE_SOCKET(pending_connection->fd);
-                        if (EMFILE == opal_socket_errno) {
-                            ORTE_ERROR_LOG(ORTE_ERR_SYS_LIMITS_SOCKETS);
-                            orte_show_help("help-orterun.txt", "orterun:sys-limit-sockets", true);
-                        } else {
-                            opal_output(0, "mca_oob_tcp_accept: accept() failed: %s (%d).",
-                                        strerror(opal_socket_errno), opal_socket_errno);
-                        }
-                        OBJ_RELEASE(pending_connection);
+                    OBJ_RELEASE(pending_connection);
+
+                    /* Non-fatal errors */
+                    if (EAGAIN == opal_socket_errno ||
+                        EWOULDBLOCK == opal_socket_errno) {
+                        continue;
+                    }
+
+                    /* If we run out of file descriptors, log an extra
+                       warning (so that the user can know to fix this
+                       problem) and abandon all hope. */
+                    else if (EMFILE == opal_socket_errno) {
+                        CLOSE_THE_SOCKET(sd);
+                        ORTE_ERROR_LOG(ORTE_ERR_SYS_LIMITS_SOCKETS);
+                        orte_show_help("help-oob-tcp.txt",
+                                       "accept failed",
+                                       true,
+                                       opal_process_info.nodename,
+                                       opal_socket_errno,
+                                       strerror(opal_socket_errno),
+                                       "Out of file descriptors");
                         goto done;
                     }
-                    continue;
+
+                    /* For all other cases, close the socket, print a
+                       warning but try to continue */
+                    else {
+                        CLOSE_THE_SOCKET(sd);
+                        orte_show_help("help-oob-tcp.txt",
+                                       "accept failed",
+                                       true,
+                                       opal_process_info.nodename,
+                                       opal_socket_errno,
+                                       strerror(opal_socket_errno),
+                                       "Unknown cause; job will try to continue");
+                        continue;
+                    }
                 }
 
                 opal_output_verbose(OOB_TCP_DEBUG_CONNECT, orte_oob_base_framework.framework_output,
@@ -846,26 +862,43 @@ static void connection_event_handler(int incoming_sd, short flags, void* cbdata)
                         opal_net_get_hostname((struct sockaddr*) &addr),
                         opal_net_get_port((struct sockaddr*) &addr));
     if (sd < 0) {
-        if (EINTR == opal_socket_errno) {
+        /* Non-fatal errors */
+        if (EINTR == opal_socket_errno ||
+            EAGAIN == opal_socket_errno ||
+            EWOULDBLOCK == opal_socket_errno) {
             return;
         }
-        if (opal_socket_errno != EAGAIN && opal_socket_errno != EWOULDBLOCK) {
-            if (EMFILE == opal_socket_errno) {
-                /*
-                 * Close incoming_sd so that orte_show_help will have a file
-                 * descriptor with which to open the help file.  We will be
-                 * exiting anyway, so we don't need to keep it open.
-                 */
-                CLOSE_THE_SOCKET(incoming_sd);
-                ORTE_ERROR_LOG(ORTE_ERR_SYS_LIMITS_SOCKETS);
-                orte_show_help("help-orterun.txt", "orterun:sys-limit-sockets", true);
-            } else {
-                opal_output(0, "mca_oob_tcp_accept: accept() failed: %s (%d).", 
-                            strerror(opal_socket_errno), opal_socket_errno);
-            }
+
+        /* If we run out of file descriptors, log an extra warning (so
+           that the user can know to fix this problem) and abandon all
+           hope. */
+        else if (EMFILE == opal_socket_errno) {
+            CLOSE_THE_SOCKET(incoming_sd);
+            ORTE_ERROR_LOG(ORTE_ERR_SYS_LIMITS_SOCKETS);
+            orte_show_help("help-oob-tcp.txt",
+                           "accept failed",
+                           true,
+                           opal_process_info.nodename,
+                           opal_socket_errno,
+                           strerror(opal_socket_errno),
+                           "Out of file descriptors");
             orte_errmgr.abort(ORTE_ERROR_DEFAULT_EXIT_CODE, NULL);
+            return;
         }
-        return;
+
+        /* For all other cases, close the socket, print a warning but
+           try to continue */
+        else {
+            CLOSE_THE_SOCKET(incoming_sd);
+            orte_show_help("help-oob-tcp.txt",
+                           "accept failed",
+                           true,
+                           opal_process_info.nodename,
+                           opal_socket_errno,
+                           strerror(opal_socket_errno),
+                           "Unknown cause; job will try to continue");
+            return;
+        }
     }
 
     /* process the connection */
@@ -876,6 +909,7 @@ static void connection_event_handler(int incoming_sd, short flags, void* cbdata)
 static void tcp_ev_cons(mca_oob_tcp_listener_t* event)
 {
     event->ev_active = false;
+    event->sd = -1;
 }
 static void tcp_ev_des(mca_oob_tcp_listener_t* event)
 {
@@ -883,6 +917,10 @@ static void tcp_ev_des(mca_oob_tcp_listener_t* event)
         opal_event_del(&event->event);
     }
     event->ev_active = false;
+    if (0 <= event->sd) {
+        CLOSE_THE_SOCKET(event->sd);
+        event->sd = -1;
+    }
 }
 
 OBJ_CLASS_INSTANCE(mca_oob_tcp_listener_t,

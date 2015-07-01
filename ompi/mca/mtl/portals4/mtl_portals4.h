@@ -38,6 +38,9 @@ struct mca_mtl_portals4_send_request_t;
 struct mca_mtl_portals4_module_t {
     mca_mtl_base_module_t base;
 
+    /* Use the logical to physical table to accelerate portals4 adressing: 1 (true) : 0 (false) */
+    int use_logical;
+
     /** Eager limit; messages greater than this use a rendezvous protocol */
     unsigned long long eager_limit;
     /** Size of short message blocks */
@@ -73,26 +76,23 @@ struct mca_mtl_portals4_module_t {
     /** MD handle for sending ACKS */
     ptl_handle_md_t zero_md_h;
 
-    /** Send MD handle(s).  Use ompi_mtl_portals4_get_md() to get the right md */
-#if OPAL_PORTALS4_MAX_MD_SIZE < OPAL_PORTALS4_MAX_VA_SIZE
-    ptl_handle_md_t *send_md_hs;
-#else
+    /** Send MD handle */
     ptl_handle_md_t send_md_h;
-#endif
 
     /** long message receive overflow ME.  Persistent ME, first in
         overflow list on the recv_idx portal table. */
     ptl_handle_me_t long_overflow_me_h;
 
-    /** List of active short receive blocks.  Active means that the ME
-        was posted to the overflow list and the UNLINK event has not
-        yet been received. */
-    opal_list_t active_recv_short_blocks;
+    /** List of short receive blocks. */
+    opal_list_t recv_short_blocks;
 
-    /** List of short receive blocks waiting for FREE event.  Blocks
-        are added to this list when the UNLINK event has been
-        received and removed when the FREE event is received. */
-    opal_list_t waiting_recv_short_blocks;
+    /** Number of active short receive blocks. Active means that the ME
+        was posted to the overflow list, the LINK event has been received but the UNLINK or the FREE event has not
+        yet been received. */
+    uint32_t active_recv_short_blocks;
+
+    /** Mutex to protect opal_list */
+    opal_mutex_t short_block_mutex;
 
     /** number of send-side operations started */
     uint64_t opcount;
@@ -126,21 +126,23 @@ extern mca_mtl_portals4_module_t ompi_mtl_portals4;
 /* match/ignore bit manipulation
  *
  * 0123 4567 01234567 01234567 01234567 01234567 01234567 01234567 01234567
- *     |             |                 |
- * ^   | context id  |      source     |            message tag
- * |   |             |                 |
+ *     |             |                          |
+ * ^   | context id  |          source          |        message tag
+ * |   |             |                          |
  * +---- protocol
  */
 
+#define MTL_PORTALS4_MAX_TAG       ((1UL << 24) -1)
+
 #define MTL_PORTALS4_PROTOCOL_MASK 0xF000000000000000ULL
 #define MTL_PORTALS4_CONTEXT_MASK  0x0FFF000000000000ULL
-#define MTL_PORTALS4_SOURCE_MASK   0x0000FFFF00000000ULL
-#define MTL_PORTALS4_TAG_MASK      0x00000000FFFFFFFFULL
+#define MTL_PORTALS4_SOURCE_MASK   0x0000FFFFFF000000ULL
+#define MTL_PORTALS4_TAG_MASK      0x0000000000FFFFFFULL
 
 #define MTL_PORTALS4_PROTOCOL_IGNR MTL_PORTALS4_PROTOCOL_MASK
 #define MTL_PORTALS4_CONTEXT_IGNR  MTL_PORTALS4_CONTEXT_MASK
 #define MTL_PORTALS4_SOURCE_IGNR   MTL_PORTALS4_SOURCE_MASK
-#define MTL_PORTALS4_TAG_IGNR      0x000000007FFFFFFFULL
+#define MTL_PORTALS4_TAG_IGNR      0x00000000007FFFFFULL
 
 #define MTL_PORTALS4_SHORT_MSG      0x1000000000000000ULL
 #define MTL_PORTALS4_LONG_MSG       0x2000000000000000ULL
@@ -149,9 +151,9 @@ extern mca_mtl_portals4_module_t ompi_mtl_portals4;
 #define MTL_PORTALS4_SET_SEND_BITS(match_bits, contextid, source, tag, type) \
     {                                                                   \
         match_bits = contextid;                                         \
-        match_bits = (match_bits << 16);                                \
+        match_bits = (match_bits << 24);                                \
         match_bits |= source;                                           \
-        match_bits = (match_bits << 32);                                \
+        match_bits = (match_bits << 24);                                \
         match_bits |= (MTL_PORTALS4_TAG_MASK & tag) | type;             \
     }
 
@@ -162,14 +164,14 @@ extern mca_mtl_portals4_module_t ompi_mtl_portals4;
         ignore_bits = MTL_PORTALS4_PROTOCOL_IGNR;                       \
                                                                         \
         match_bits = contextid;                                         \
-        match_bits = (match_bits << 16);                                \
+        match_bits = (match_bits << 24);                                \
                                                                         \
         if (MPI_ANY_SOURCE == source) {                                 \
-            match_bits = (match_bits << 32);                            \
+            match_bits = (match_bits << 24);                            \
             ignore_bits |= MTL_PORTALS4_SOURCE_IGNR;                    \
         } else {                                                        \
             match_bits |= source;                                       \
-            match_bits = (match_bits << 32);                            \
+            match_bits = (match_bits << 24);                            \
         }                                                               \
                                                                         \
         if (MPI_ANY_TAG == tag) {                                       \
@@ -189,7 +191,7 @@ extern mca_mtl_portals4_module_t ompi_mtl_portals4;
 #define MTL_PORTALS4_GET_TAG(match_bits)                \
     ((int)(match_bits & MTL_PORTALS4_TAG_MASK))
 #define MTL_PORTALS4_GET_SOURCE(match_bits)             \
-    ((int)((match_bits & MTL_PORTALS4_SOURCE_MASK) >> 32))
+    ((int)((match_bits & MTL_PORTALS4_SOURCE_MASK) >> 24))
 
 
 #define MTL_PORTALS4_SYNC_MSG       0x8000000000000000ULL
@@ -207,72 +209,14 @@ extern mca_mtl_portals4_module_t ompi_mtl_portals4;
 #define MTL_PORTALS4_IS_SYNC_MSG(hdr_data)            \
     (0 != (MTL_PORTALS4_SYNC_MSG & hdr_data))
 
-
-/*
- * Not all implementations of Portals 4 support binding a memory
- * descriptor which covers all of memory, but all support covering a
- * large fraction of memory.  Therefore, rather than working around
- * the issue by pinning per message, we use a number of memory
- * descriptors to cover all of memory.  As long as the maximum memory
- * descriptor is a large fraction of the user virtual address space
- * (like 46 bit MDs on a platform with 47 bits of user virtual address
- * space), this works fine.
- *
- * Our scheme is to create N memory descriptors which contiguously
- * cover the entire user address space, then another N-1 contiguous
- * memory descriptors offset by 1/2 the size of the MD, then a final
- * memory descriptor of 1/2 the size of the other MDs covering the top
- * of the memory space, to avoid if statements in the critical path.  This
- * scheme allows for a maximum message size of 1/2 the size of the MD
- * without ever crossing an MD boundary.  Also, because MD sizes are
- * always on a power of 2 in this scheme, computing the offsets and MD
- * selection are quick, using only bit shift and mask.q
- *
- * ompi_mtl_portals4_get_md() relies heavily on compiler constant folding.
- * "mask" can be constant folded into a constant.  "which" compiler folds 
- * into a bit shift of a register a constant number of times, then masked
- * by a constant (the input is, unfortunately, not constant).
- *
- * In the case where an MD can cover all of memory,
- * ompi_mtl_portals4_get_md() will be compiled into two assignments.
- * Assuming the function inlines (and it certainly should be), the two
- * assignments should be optimized into register assignments for the
- * Portals call relatively easily.
- */
-static inline void
-ompi_mtl_portals4_get_md(const void *ptr, ptl_handle_md_t *md_h, void **base_ptr)
-{
-#if OPAL_PORTALS4_MAX_MD_SIZE < OPAL_PORTALS4_MAX_VA_SIZE
-    int mask = (1ULL << (OPAL_PORTALS4_MAX_VA_SIZE - OPAL_PORTALS4_MAX_MD_SIZE + 1)) - 1;
-    int which = (((uintptr_t) ptr) >> (OPAL_PORTALS4_MAX_MD_SIZE - 1)) & mask;
-    *md_h = ompi_mtl_portals4.send_md_hs[which];
-    *base_ptr = (void*) (which * (1ULL << (OPAL_PORTALS4_MAX_MD_SIZE - 1)));
-#else
-    *md_h = ompi_mtl_portals4.send_md_h;
-    *base_ptr = 0;
-#endif
-}
-
-
-static inline int
-ompi_mtl_portals4_get_num_mds(void)
-{
-#if OPAL_PORTALS4_MAX_MD_SIZE < OPAL_PORTALS4_MAX_VA_SIZE
-    return (1 << (OPAL_PORTALS4_MAX_VA_SIZE - OPAL_PORTALS4_MAX_MD_SIZE + 1));
-#else
-    return 1;
-#endif
-}
-
-
 /* MTL interface functions */
 extern int ompi_mtl_portals4_finalize(struct mca_mtl_base_module_t *mtl);
 
-extern int ompi_mtl_portals4_add_procs(struct mca_mtl_base_module_t* mtl, 
+extern int ompi_mtl_portals4_add_procs(struct mca_mtl_base_module_t* mtl,
                                        size_t nprocs,
                                        struct ompi_proc_t** procs);
 
-extern int ompi_mtl_portals4_del_procs(struct mca_mtl_base_module_t* mtl, 
+extern int ompi_mtl_portals4_del_procs(struct mca_mtl_base_module_t* mtl,
                                        size_t nprocs,
                                        struct ompi_proc_t** procs);
 

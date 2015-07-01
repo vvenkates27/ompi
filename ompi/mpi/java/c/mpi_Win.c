@@ -5,14 +5,16 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -39,6 +41,40 @@ JNIEXPORT jlong JNICALL Java_mpi_Win_createWin(
 
     ompi_java_exceptionCheck(env, rc);
     return (jlong)win;
+}
+
+JNIEXPORT jlong JNICALL Java_mpi_Win_createDynamicWin(
+        JNIEnv *env, jobject jthis,
+        jlong info, jlong comm)
+{
+    MPI_Win win;
+
+    int rc = MPI_Win_create_dynamic(
+                            (MPI_Info)info, (MPI_Comm)comm, &win);
+
+    ompi_java_exceptionCheck(env, rc);
+    return (jlong)win;
+}
+
+JNIEXPORT void JNICALL Java_mpi_Win_attach(
+        JNIEnv *env, jobject jthis, jlong win, jobject jBase,
+        jint size)
+{
+    void *base = (*env)->GetDirectBufferAddress(env, jBase);
+
+    int rc = MPI_Win_attach((MPI_Win)win, base, (MPI_Aint)size);
+
+    ompi_java_exceptionCheck(env, rc);
+}
+
+JNIEXPORT void JNICALL Java_mpi_Win_detach(
+        JNIEnv *env, jobject jthis, jlong win, jobject jBase)
+{
+    void *base = (*env)->GetDirectBufferAddress(env, jBase);
+
+    int rc = MPI_Win_detach((MPI_Win)win, base);
+
+    ompi_java_exceptionCheck(env, rc);
 }
 
 JNIEXPORT jlong JNICALL Java_mpi_Win_getGroup(
@@ -242,3 +278,23 @@ JNIEXPORT jlong JNICALL Java_mpi_Win_free(
     ompi_java_exceptionCheck(env, rc);
     return (jlong)win;
 }
+
+JNIEXPORT jlong JNICALL Java_mpi_Win_getInfo(
+        JNIEnv *env, jobject jthis, jlong handle)
+{
+    MPI_Win win = (MPI_Win)handle;
+    MPI_Info info;
+    int rc = MPI_Win_get_info((MPI_Win)win, &info);
+    ompi_java_exceptionCheck(env, rc);
+    return (jlong)info;
+}
+
+JNIEXPORT void JNICALL Java_mpi_Win_setInfo(
+        JNIEnv *env, jobject jthis, jlong handle, jlong i)
+{
+    MPI_Win win = (MPI_Win)handle;
+    MPI_Info info = (MPI_Info)i;
+    int rc = MPI_Win_set_info(win, info);
+    ompi_java_exceptionCheck(env, rc);
+}
+

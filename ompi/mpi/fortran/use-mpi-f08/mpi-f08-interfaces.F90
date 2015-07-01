@@ -1,12 +1,14 @@
 ! -*- f90 -*-
 !
-! Copyright (c) 2009-2014 Cisco Systems, Inc.  All rights reserved.
-! Copyright (c) 2009-2013 Los Alamos National Security, LLC.
+! Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
+! Copyright (c) 2009-2015 Los Alamos National Security, LLC.
 !                         All rights reserved.
 ! Copyright (c) 2012      The University of Tennessee and The University
 !                         of Tennessee Research Foundation.  All rights
 !                         reserved.
 ! Copyright (c) 2012      Inria.  All rights reserved.
+! Copyright (c) 2015      Research Organization for Information Science
+!                         and Technology (RIST). All rights reserved.
 ! $COPYRIGHT$
 !
 ! This file provides the interface specifications for the MPI Fortran
@@ -69,13 +71,9 @@ end interface  MPI_Buffer_attach
 
 interface  MPI_Buffer_detach
 subroutine MPI_Buffer_detach_f08(buffer_addr,size,ierror)
+   USE, INTRINSIC ::  ISO_C_BINDING, ONLY : C_PTR
    implicit none
-   !DEC$ ATTRIBUTES NO_ARG_CHECK :: buffer_addr
-   !GCC$ ATTRIBUTES NO_ARG_CHECK :: buffer_addr
-   !$PRAGMA IGNORE_TKR buffer_addr
-   !DIR$ IGNORE_TKR buffer_addr
-   !IBM* IGNORE_TKR buffer_addr
-   OMPI_FORTRAN_IGNORE_TKR_TYPE :: buffer_addr
+   TYPE(C_PTR), INTENT(OUT) ::  buffer_addr
    INTEGER, INTENT(OUT) :: size
    INTEGER, OPTIONAL, INTENT(OUT) :: ierror
 end subroutine MPI_Buffer_detach_f08
@@ -2178,6 +2176,16 @@ subroutine MPI_Win_get_attr_f08(win,win_keyval,attribute_val,flag,ierror)
 end subroutine MPI_Win_get_attr_f08
 end interface  MPI_Win_get_attr
 
+interface  MPI_Win_get_info
+subroutine MPI_Win_get_info_f08(win,info,ierror)
+   use :: mpi_f08_types, only : MPI_Win, MPI_Info
+   implicit none
+   TYPE(MPI_Win), INTENT(IN) :: win
+   TYPE(MPI_Info), INTENT(OUT) :: info
+   INTEGER, OPTIONAL, INTENT(OUT) :: ierror
+end subroutine MPI_Win_get_info_f08
+end interface  MPI_Win_get_info
+
 interface  MPI_Win_get_name
 subroutine MPI_Win_get_name_f08(win,win_name,resultlen,ierror)
    use :: mpi_f08_types, only : MPI_Win, MPI_MAX_OBJECT_NAME
@@ -2199,6 +2207,16 @@ subroutine MPI_Win_set_attr_f08(win,win_keyval,attribute_val,ierror)
    INTEGER, OPTIONAL, INTENT(OUT) :: ierror
 end subroutine MPI_Win_set_attr_f08
 end interface  MPI_Win_set_attr
+
+interface  MPI_Win_set_info
+subroutine MPI_Win_set_info_f08(win,info,ierror)
+   use :: mpi_f08_types, only : MPI_Win, MPI_Info
+   implicit none
+   TYPE(MPI_Win), INTENT(IN) :: win
+   TYPE(MPI_Info), INTENT(IN) :: info
+   INTEGER, OPTIONAL, INTENT(OUT) :: ierror
+end subroutine MPI_Win_set_info_f08
+end interface  MPI_Win_set_info
 
 interface  MPI_Win_set_name
 subroutine MPI_Win_set_name_f08(win,win_name,ierror)
@@ -2460,6 +2478,26 @@ function  MPI_Wtime_f08( ) BIND(C,name="MPI_Wtime")
 end function MPI_Wtime_f08
 end interface MPI_Wtime
 
+interface MPI_Aint_add
+function  MPI_Aint_add_f08(base,diff)
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   INTEGER(MPI_ADDRESS_KIND) :: base
+   INTEGER(MPI_ADDRESS_KIND) :: diff
+   INTEGER(MPI_ADDRESS_KIND) :: MPI_Aint_add_f08
+end function MPI_Aint_add_f08
+end interface MPI_Aint_add
+
+interface MPI_Aint_diff
+function  MPI_Aint_diff_f08(addr1,addr2)
+   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
+   implicit none
+   INTEGER(MPI_ADDRESS_KIND) :: addr1
+   INTEGER(MPI_ADDRESS_KIND) :: addr2
+   INTEGER(MPI_ADDRESS_KIND) :: MPI_Aint_diff_f08
+end function MPI_Aint_diff_f08
+end interface MPI_Aint_diff
+
 interface  MPI_Abort
 subroutine MPI_Abort_f08(comm,errorcode,ierror)
    use :: mpi_f08_types, only : MPI_Comm
@@ -2644,15 +2682,13 @@ end interface  MPI_Finalized
 ! be okay once the Interop TR is implemented.
 interface  MPI_Free_mem
 subroutine MPI_Free_mem_f08(base,ierror)
-   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
    implicit none
    !DEC$ ATTRIBUTES NO_ARG_CHECK :: base
    !GCC$ ATTRIBUTES NO_ARG_CHECK :: base
    !$PRAGMA IGNORE_TKR base
    !DIR$ IGNORE_TKR base
    !IBM* IGNORE_TKR base
-!   INTEGER(MPI_ADDRESS_KIND), DIMENSION(*) OMPI_ASYNCHRONOUS :: base
-   INTEGER(MPI_ADDRESS_KIND), DIMENSION(*) :: base
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: base
    INTEGER, OPTIONAL, INTENT(OUT) :: ierror
 end subroutine MPI_Free_mem_f08
 end interface  MPI_Free_mem
@@ -3202,6 +3238,48 @@ subroutine MPI_Win_create_f08(base,size,disp_unit,info,comm,win,ierror)
    INTEGER, OPTIONAL, INTENT(OUT) :: ierror
 end subroutine MPI_Win_create_f08
 end interface  MPI_Win_create
+
+interface  MPI_Win_create_dynamic
+subroutine MPI_Win_create_dynamic_f08(info,comm,win,ierror)
+   use :: mpi_f08_types, only : MPI_Info, MPI_Comm, MPI_Win
+   implicit none
+   TYPE(MPI_Info), INTENT(IN) :: info
+   TYPE(MPI_Comm), INTENT(IN) :: comm
+   TYPE(MPI_Win), INTENT(OUT) :: win
+   INTEGER, OPTIONAL, INTENT(OUT) :: ierror
+end subroutine MPI_Win_create_dynamic_f08
+end interface  MPI_Win_create_dynamic
+
+interface  MPI_Win_attach
+subroutine MPI_Win_attach_f08(win,base,size,ierror)
+   use :: mpi_f08_types, only : MPI_Win, MPI_ADDRESS_KIND
+   implicit none
+   !DEC$ ATTRIBUTES NO_ARG_CHECK :: base
+   !GCC$ ATTRIBUTES NO_ARG_CHECK :: base
+   !$PRAGMA IGNORE_TKR base
+   !DIR$ IGNORE_TKR base
+   !IBM* IGNORE_TKR base
+   OMPI_FORTRAN_IGNORE_TKR_TYPE :: base
+   INTEGER(MPI_ADDRESS_KIND), INTENT(IN) :: size
+   TYPE(MPI_Win), INTENT(OUT) :: win
+   INTEGER, OPTIONAL, INTENT(OUT) :: ierror
+end subroutine MPI_Win_attach_f08
+end interface  MPI_Win_attach
+
+interface  MPI_Win_detach
+subroutine MPI_Win_detach_f08(win,base,ierror)
+   use :: mpi_f08_types, only : MPI_Win, MPI_ADDRESS_KIND
+   implicit none
+   !DEC$ ATTRIBUTES NO_ARG_CHECK :: base
+   !GCC$ ATTRIBUTES NO_ARG_CHECK :: base
+   !$PRAGMA IGNORE_TKR base
+   !DIR$ IGNORE_TKR base
+   !IBM* IGNORE_TKR base
+   OMPI_FORTRAN_IGNORE_TKR_TYPE :: base
+   TYPE(MPI_Win), INTENT(OUT) :: win
+   INTEGER, OPTIONAL, INTENT(OUT) :: ierror
+end subroutine MPI_Win_detach_f08
+end interface  MPI_Win_detach
 
 interface  MPI_Win_fence
 subroutine MPI_Win_fence_f08(assert,win,ierror)

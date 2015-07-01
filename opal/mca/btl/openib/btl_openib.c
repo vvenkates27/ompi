@@ -641,7 +641,9 @@ static int prepare_device_for_use (mca_btl_openib_device_t *device)
     }
 
     if(mca_btl_openib_component.use_async_event_thread) {
-        mca_btl_openib_async_cmd_t async_command;
+        mca_btl_openib_async_cmd_t async_command = {.a_cmd = OPENIB_ASYNC_CMD_FD_ADD,
+                                                    .fd = device->ib_dev_context->async_fd,
+                                                    .qp = NULL};
 
         /* start the async even thread if it is not already started */
         if (start_async_event_thread() != OPAL_SUCCESS)
@@ -649,8 +651,6 @@ static int prepare_device_for_use (mca_btl_openib_device_t *device)
 
         device->got_fatal_event = false;
         device->got_port_event = false;
-        async_command.a_cmd = OPENIB_ASYNC_CMD_FD_ADD;
-        async_command.fd = device->ib_dev_context->async_fd;
         if (write(mca_btl_openib_component.async_pipe[1],
                     &async_command, sizeof(mca_btl_openib_async_cmd_t))<0){
             BTL_ERROR(("Failed to write to pipe [%d]",errno));
@@ -699,7 +699,7 @@ static int prepare_device_for_use (mca_btl_openib_device_t *device)
     if (mca_btl_openib_component.max_eager_rdma > 0 &&
         device->use_eager_rdma) {
         device->eager_rdma_buffers =
-            (mca_btl_base_endpoint_t **) calloc(mca_btl_openib_component.max_eager_rdma * device->btls,
+            (mca_btl_base_endpoint_t **) calloc((size_t) mca_btl_openib_component.max_eager_rdma * device->btls,
                                             sizeof(mca_btl_openib_endpoint_t*));
         if(NULL == device->eager_rdma_buffers) {
             BTL_ERROR(("Memory allocation fails"));
@@ -1257,7 +1257,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_alloc(
         to_com_frag(sfrag)->sg_entry.addr = (uint64_t)(uintptr_t)sfrag->hdr;
     }
 
-    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)((unsigned char*)(sfrag->hdr + 1) + 
+    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)((unsigned char*)(sfrag->hdr + 1) +
                   sfrag->coalesced_length +
                   to_base_frag(sfrag)->segment.seg_len);
     cfrag->hdr = (mca_btl_openib_header_coalesced_t*)BTL_OPENIB_ALIGN_COALESCE_HDR(cfrag->hdr);
@@ -1355,7 +1355,6 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
     uint32_t iov_count = 1;
     size_t max_data = *size;
     void *ptr;
-    int rc;
 
     assert(MCA_BTL_NO_ORDER == order);
 
@@ -1373,7 +1372,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
 
     iov.iov_len = max_data;
     iov.iov_base = (IOVBASE_TYPE *) ( (unsigned char*) ptr + reserve );
-    rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data);
+    (void) opal_convertor_pack(convertor, &iov, &iov_count, &max_data);
 
 #if OPAL_CUDA_SUPPORT /* CUDA_ASYNC_SEND */
     /* If the convertor is copying the data asynchronously, then record an event

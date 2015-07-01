@@ -1,6 +1,6 @@
 # -*- makefile -*-
 #
-# Copyright (c) 2006-2014 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
@@ -11,9 +11,9 @@
 #                         and Technology (RIST). All rights reserved.
 #
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 
@@ -92,6 +92,8 @@ mpi_api_files = \
         add_error_class_f08.F90 \
         add_error_code_f08.F90 \
         add_error_string_f08.F90 \
+        aint_add_f08.F90 \
+        aint_diff_f08.F90 \
         allgather_f08.F90 \
         allgatherv_f08.F90 \
         alloc_mem_f08.F90 \
@@ -327,6 +329,7 @@ mpi_api_files = \
         type_set_attr_f08.F90 \
         type_set_name_f08.F90 \
         type_size_f08.F90 \
+        type_size_x_f08.F90 \
         type_vector_f08.F90 \
         unpack_external_f08.F90 \
         unpack_f08.F90 \
@@ -337,12 +340,15 @@ mpi_api_files = \
         waitsome_f08.F90 \
         win_allocate_f08.F90 \
         win_allocate_shared_f08.F90 \
+        win_attach_f08.F90 \
         win_call_errhandler_f08.F90 \
         win_complete_f08.F90 \
+        win_create_dynamic_f08.F90 \
         win_create_errhandler_f08.F90 \
         win_create_f08.F90 \
         win_create_keyval_f08.F90 \
         win_delete_attr_f08.F90 \
+        win_detach_f08.F90 \
         win_fence_f08.F90 \
         win_flush_f08.F90 \
         win_flush_all_f08.F90 \
@@ -353,12 +359,14 @@ mpi_api_files = \
         win_get_attr_f08.F90 \
         win_get_errhandler_f08.F90 \
         win_get_group_f08.F90 \
+        win_get_info_f08.F90 \
         win_get_name_f08.F90 \
         win_lock_f08.F90 \
         win_lock_all_f08.F90 \
         win_post_f08.F90 \
         win_set_attr_f08.F90 \
         win_set_errhandler_f08.F90 \
+        win_set_info_f08.F90 \
         win_set_name_f08.F90 \
         win_shared_query_f08.F90 \
         win_start_f08.F90 \
@@ -439,6 +447,8 @@ pmpi_api_files = \
         profile/padd_error_class_f08.F90 \
         profile/padd_error_code_f08.F90 \
         profile/padd_error_string_f08.F90 \
+        profile/paint_add_f08.F90 \
+        profile/paint_diff_f08.F90 \
         profile/pallgather_f08.F90 \
         profile/pallgatherv_f08.F90 \
         profile/palloc_mem_f08.F90 \
@@ -520,6 +530,7 @@ pmpi_api_files = \
         profile/pget_elements_f08.F90 \
         profile/pget_elements_x_f08.F90 \
         profile/pget_f08.F90 \
+        profile/pget_library_version_f08.F90 \
         profile/pget_processor_name_f08.F90 \
         profile/pget_version_f08.F90 \
         profile/pgraph_create_f08.F90 \
@@ -684,12 +695,15 @@ pmpi_api_files = \
         profile/pwaitsome_f08.F90 \
         profile/pwin_allocate_f08.F90 \
         profile/pwin_allocate_shared_f08.F90 \
+        profile/pwin_attach_f08.F90 \
         profile/pwin_call_errhandler_f08.F90 \
         profile/pwin_complete_f08.F90 \
+        profile/pwin_create_dynamic_f08.F90 \
         profile/pwin_create_errhandler_f08.F90 \
         profile/pwin_create_f08.F90 \
         profile/pwin_create_keyval_f08.F90 \
         profile/pwin_delete_attr_f08.F90 \
+        profile/pwin_detach_f08.F90 \
         profile/pwin_fence_f08.F90 \
         profile/pwin_flush_f08.F90 \
         profile/pwin_flush_all_f08.F90 \
@@ -700,12 +714,14 @@ pmpi_api_files = \
         profile/pwin_get_attr_f08.F90 \
         profile/pwin_get_errhandler_f08.F90 \
         profile/pwin_get_group_f08.F90 \
+        profile/pwin_get_info_f08.F90 \
         profile/pwin_get_name_f08.F90 \
         profile/pwin_lock_f08.F90 \
         profile/pwin_lock_all_f08.F90 \
         profile/pwin_post_f08.F90 \
         profile/pwin_set_attr_f08.F90 \
         profile/pwin_set_errhandler_f08.F90 \
+        profile/pwin_set_info_f08.F90 \
         profile/pwin_set_name_f08.F90 \
         profile/pwin_shared_query_f08.F90 \
         profile/pwin_start_f08.F90 \
@@ -807,6 +823,7 @@ endif
 libmpi_usempif08_la_LIBADD = \
         $(module_sentinel_file) \
         $(OMPI_MPIEXT_USEMPIF08_LIBS) \
+        $(top_builddir)/ompi/mpi/fortran/mpif-h/libmpi_mpifh.la \
         $(top_builddir)/ompi/libmpi.la
 libmpi_usempif08_la_DEPENDENCIES = $(module_sentinel_file)
 libmpi_usempif08_la_LDFLAGS = -version-info $(libmpi_usempif08_so_version)

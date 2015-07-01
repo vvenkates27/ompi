@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010-2011 Cisco Systems, Inc.  All rights reserved. 
+ * Copyright (c) 2010-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2014      Intel, Inc.  All rights reserved.
@@ -29,9 +29,7 @@
 #ifdef HAVE_SYS_SIGNAL_H
 #include <sys/signal.h>
 #else
-#ifdef HAVE_SIGNAL_H
 #include <signal.h>
-#endif
 #endif
 
 #include "orte/mca/plm/plm_types.h"
@@ -193,6 +191,45 @@ int orte_err2str(int errnum, const char **errmsg)
         break;
     case ORTE_ERR_NO_PATH_TO_TARGET:
         retval = "No OOB path to target";
+        break;
+    case ORTE_ERR_OP_IN_PROGRESS:
+        retval = "Operation in progress";
+        break;
+    case ORTE_ERR_OPEN_CHANNEL_PEER_FAIL:
+        retval = "Open channel to peer failed";
+        break;
+    case ORTE_ERR_OPEN_CHANNEL_PEER_REJECT:
+        retval = "Open channel to peer was rejected";
+        break;
+    case ORTE_ERR_QOS_TYPE_UNSUPPORTED:
+        retval = "QoS type unsupported";
+        break;
+    case ORTE_ERR_QOS_ACK_WINDOW_FULL:
+        retval = "QoS ack window full";
+        break;
+    case ORTE_ERR_ACK_TIMEOUT_SENDER:
+        retval = "Send ack timed out";
+        break;
+    case ORTE_ERR_ACK_TIMEOUT_RECEIVER:
+        retval = "Recv ack timed out";
+        break;
+    case ORTE_ERR_LOST_MSG_IN_WINDOW:
+        retval = "Msg lost in window";
+        break;
+    case ORTE_ERR_CHANNEL_BUSY:
+        retval = "Channel busy";
+        break;
+    case ORTE_ERR_DUPLICATE_MSG:
+        retval = "Duplicate message";
+        break;
+    case ORTE_ERR_OUT_OF_ORDER_MSG:
+        retval = "Out of order message";
+        break;
+    case ORTE_ERR_OPEN_CHANNEL_DUPLICATE:
+        retval = "Duplicate channel open request";
+        break;
+    case ORTE_ERR_FORCE_SELECT:
+        retval = "Force select";
         break;
     default:
         if (orte_report_silent_errors) {

@@ -6,29 +6,27 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
 #include "opal_config.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 #include <errno.h>
 #include <stdio.h>
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
 
 #include "opal/util/error.h"
 #include "opal/constants.h"
@@ -46,7 +44,7 @@ struct converter_info_t {
 typedef struct converter_info_t converter_info_t;
 
 /* all default to NULL */
-converter_info_t converters[MAX_CONVERTERS];
+converter_info_t converters[MAX_CONVERTERS] = {{0}};
 
 static int
 opal_strerror_int(int errnum, const char **str)
@@ -76,10 +74,10 @@ opal_strerror_unknown(int errnum, char **str)
 
     for (i = 0 ; i < MAX_CONVERTERS ; ++i) {
         if (0 != converters[i].init) {
-            if (errnum < converters[i].err_base && 
+            if (errnum < converters[i].err_base &&
                 errnum > converters[i].err_max) {
                 asprintf(str, "Unknown error: %d (%s error %d)",
-                         errnum, converters[i].project, 
+                         errnum, converters[i].project,
                          errnum - converters[i].err_base);
                 return OPAL_SUCCESS;
             }

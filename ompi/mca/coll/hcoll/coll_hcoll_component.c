@@ -198,13 +198,13 @@ static int hcoll_register(void)
     CHECK(reg_int("np",NULL,
                   "Minimal number of processes in the communicator"
                   " for the corresponding hcoll context to be created (default: 32)",
-                  2, 
+                  2,
                   &mca_coll_hcoll_component.hcoll_np,
                   0));
 
     CHECK(reg_int("datatype_fallback",NULL,
                   "[1|0|] Enable/Disable user defined dattypes fallback",
-                  1, 
+                  1,
                   &mca_coll_hcoll_component.hcoll_datatype_fallback,
                   0));
 
@@ -232,7 +232,6 @@ static int hcoll_register(void)
 
 static int hcoll_open(void)
 {
-    int rc;
     mca_coll_hcoll_component_t *cm;
     cm  = &mca_coll_hcoll_component;
 
@@ -272,6 +271,10 @@ static int hcoll_close(void)
     if (cm->using_mem_hooks) {
         opal_mem_hooks_unregister_release(mca_coll_hcoll_mem_release_cb);
     }
+
+#if HCOLL_API >= HCOLL_VERSION(3,2)
+    hcoll_free_init_opts(cm->init_opts);
+#endif
 
     HCOL_VERBOSE(5,"HCOLL FINALIZE");
     rc = hcoll_finalize();

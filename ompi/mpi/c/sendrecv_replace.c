@@ -5,15 +5,17 @@
  * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2010-2012 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 #include "ompi_config.h"
@@ -87,7 +89,7 @@ int MPI_Sendrecv_replace(void * buf, int count, MPI_Datatype datatype,
         size_t packed_size, max_data;
         uint32_t iov_count;
         ompi_status_public_t recv_status;
-        ompi_proc_t* proc = ompi_comm_peer_lookup(comm,dest);
+        ompi_proc_t* proc = ompi_comm_peer_lookup(comm,source);
         if(proc == NULL) {
             rc = MPI_ERR_RANK;
             OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
@@ -110,7 +112,7 @@ int MPI_Sendrecv_replace(void * buf, int count, MPI_Datatype datatype,
         }
 
         /* recv into temporary buffer */
-        rc = MPI_Sendrecv( buf, count, datatype, dest, sendtag, iov.iov_base, packed_size, 
+        rc = MPI_Sendrecv( buf, count, datatype, dest, sendtag, iov.iov_base, packed_size,
                            MPI_BYTE, source, recvtag, comm, &recv_status );
         if (rc != MPI_SUCCESS) {
             if(packed_size > sizeof(recv_data))

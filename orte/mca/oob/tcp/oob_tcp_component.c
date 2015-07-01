@@ -14,7 +14,7 @@
  *                         reserved.
  * Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      NVIDIA Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -25,7 +25,7 @@
  * In windows, many of the socket functions return an EWOULDBLOCK
  * instead of things like EAGAIN, EINPROGRESS, etc. It has been
  * verified that this will not conflict with other error codes that
- * are returned by these functions under UNIX/Linux environments 
+ * are returned by these functions under UNIX/Linux environments
  */
 
 #include "orte_config.h"
@@ -83,7 +83,7 @@ static int tcp_component_register(void);
 static int tcp_component_open(void);
 static int tcp_component_close(void);
 
-static bool component_available(void);
+static int component_available(void);
 static int component_startup(void);
 static void component_shutdown(void);
 static int component_send(orte_rml_send_t *msg);
@@ -150,7 +150,7 @@ static int tcp_component_open(void)
 #endif
 
     /* if_include and if_exclude need to be mutually exclusive */
-    if (OPAL_SUCCESS != 
+    if (OPAL_SUCCESS !=
         mca_base_var_check_exclusive("orte",
         mca_oob_tcp_component.super.oob_base.mca_type_name,
         mca_oob_tcp_component.super.oob_base.mca_component_name,
@@ -162,7 +162,6 @@ static int tcp_component_open(void)
            "open" failing is not printed */
         return ORTE_ERR_NOT_AVAILABLE;
     }
-    
     return ORTE_SUCCESS;
 }
 
@@ -196,8 +195,8 @@ static int tcp_component_close(void)
 static char *static_port_string;
 #if OPAL_ENABLE_IPV6
 static char *static_port_string6;
-#endif
-#endif
+#endif // OPAL_ENABLE_IPV6
+#endif // OPAL_ENABLE_STATIC_PORTS
 
 static char *dyn_port_string;
 #if OPAL_ENABLE_IPV6
@@ -214,7 +213,7 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "peer_limit",
                                           "Maximum number of peer connections to simultaneously maintain (-1 = infinite)",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_5,
                                           MCA_BASE_VAR_SCOPE_LOCAL,
                                           &mca_oob_tcp_component.peer_limit);
 
@@ -222,7 +221,7 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "peer_retries",
                                           "Number of times to try shutting down a connection before giving up",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_5,
                                           MCA_BASE_VAR_SCOPE_LOCAL,
                                           &mca_oob_tcp_component.max_retries);
 
@@ -230,7 +229,7 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "sndbuf",
                                           "TCP socket send buffering size (in bytes)",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_LOCAL,
                                           &mca_oob_tcp_component.tcp_sndbuf);
 
@@ -238,7 +237,7 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "rcvbuf",
                                           "TCP socket receive buffering size (in bytes)",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_LOCAL,
                                           &mca_oob_tcp_component.tcp_rcvbuf);
 
@@ -246,7 +245,7 @@ static int tcp_component_register(void)
     var_id = mca_base_component_var_register(component, "if_include",
                                              "Comma-delimited list of devices and/or CIDR notation of TCP networks to use for Open MPI bootstrap communication (e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with oob_tcp_if_exclude.",
                                              MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                             OPAL_INFO_LVL_9,
+                                             OPAL_INFO_LVL_2,
                                              MCA_BASE_VAR_SCOPE_LOCAL,
                                              &mca_oob_tcp_component.if_include);
     (void)mca_base_var_register_synonym(var_id, "orte", "oob", "tcp", "include",
@@ -256,7 +255,7 @@ static int tcp_component_register(void)
     var_id = mca_base_component_var_register(component, "if_exclude",
                                              "Comma-delimited list of devices and/or CIDR notation of TCP networks to NOT use for Open MPI bootstrap communication -- all devices not matching these specifications will be used (e.g., \"eth0,192.168.0.0/16\").  If set to a non-default value, it is mutually exclusive with oob_tcp_if_include.",
                                              MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                             OPAL_INFO_LVL_9,
+                                             OPAL_INFO_LVL_2,
                                              MCA_BASE_VAR_SCOPE_LOCAL,
                                              &mca_oob_tcp_component.if_exclude);
     (void)mca_base_var_register_synonym(var_id, "orte", "oob", "tcp", "exclude",
@@ -275,10 +274,10 @@ static int tcp_component_register(void)
 
 #if ORTE_ENABLE_STATIC_PORTS
     static_port_string = NULL;
-    (void)mca_base_component_var_register(component, "static_ipv4_ports", 
+    (void)mca_base_component_var_register(component, "static_ipv4_ports",
                                           "Static ports for daemons and procs (IPv4)",
                                           MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_2,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &static_port_string);
 
@@ -295,10 +294,10 @@ static int tcp_component_register(void)
 
 #if OPAL_ENABLE_IPV6
     static_port_string6 = NULL;
-    (void)mca_base_component_var_register(component, "static_ipv6_ports", 
+    (void)mca_base_component_var_register(component, "static_ipv6_ports",
                                           "Static ports for daemons and procs (IPv6)",
                                           MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_2,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &static_port_string6);
 
@@ -318,14 +317,13 @@ static int tcp_component_register(void)
     } else {
         orte_static_ports = true;
     }
-#endif
-#endif
-    
+#endif // OPAL_ENABLE_IPV6
+#endif // OPAL_ENABLE_STATIC_PORTS
     dyn_port_string = NULL;
     (void)mca_base_component_var_register(component, "dynamic_ipv4_ports",
                                           "Range of ports to be dynamically used by daemons and procs (IPv4)",
                                           MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &dyn_port_string);
     /* if ports were provided, parse the provided range */
@@ -352,7 +350,7 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "dynamic_ipv6_ports",
                                           "Range of ports to be dynamically used by daemons and procs (IPv6)",
                                           MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &dyn_port_string6);
     /* if ports were provided, parse the provided range */
@@ -386,13 +384,13 @@ static int tcp_component_register(void)
     } else {
         mca_oob_tcp_component.tcp6_dyn_ports = NULL;
     }
-#endif
+#endif // OPAL_ENABLE_IPV6
 
     mca_oob_tcp_component.disable_ipv4_family = false;
     (void)mca_base_component_var_register(component, "disable_ipv4_family",
                                           "Disable the IPv4 interfaces",
                                           MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_oob_tcp_component.disable_ipv4_family);
 
@@ -401,32 +399,36 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "disable_ipv6_family",
                                           "Disable the IPv6 interfaces",
                                           MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_oob_tcp_component.disable_ipv6_family);
-#endif
+#endif // OPAL_ENABLE_IPV6
 
-    
-    mca_oob_tcp_component.keepalive_time = 10;
+    // Default to keepalives every 60 seconds
+    mca_oob_tcp_component.keepalive_time = 60;
     (void)mca_base_component_var_register(component, "keepalive_time",
-                                          "Idle time in seconds before starting to send keepalives (num <= 0 ----> disable keepalive)",
+                                          "Idle time in seconds before starting to send keepalives (keepalive_time <= 0 disables keepalive functionality)",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_5,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_oob_tcp_component.keepalive_time);
 
-    mca_oob_tcp_component.keepalive_intvl = 60;
+    // Default to keepalive retry interval time of 5 seconds
+    mca_oob_tcp_component.keepalive_intvl = 5;
     (void)mca_base_component_var_register(component, "keepalive_intvl",
-                                          "Time between keepalives, in seconds",
+                                          "Time between successive keepalive pings when peer has not responded, in seconds (ignored if keepalive_time <= 0)",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_5,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_oob_tcp_component.keepalive_intvl);
+
+    // Default to retrying a keepalive 3 times before declaring the
+    // peer kaput
     mca_oob_tcp_component.keepalive_probes = 3;
     (void)mca_base_component_var_register(component, "keepalive_probes",
-                                          "Number of keepalives that can be missed before declaring error",
+                                          "Number of keepalives that can be missed before declaring error (ignored if keepalive_time <= 0)",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_5,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_oob_tcp_component.keepalive_probes);
 
@@ -434,7 +436,7 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "retry_delay",
                                           "Time (in sec) to wait before trying to connect to peer again",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_oob_tcp_component.retry_delay);
 
@@ -442,7 +444,7 @@ static int tcp_component_register(void)
     (void)mca_base_component_var_register(component, "max_recon_attempts",
                                           "Max number of times to attempt connection before giving up (-1 -> never give up)",
                                           MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                          OPAL_INFO_LVL_9,
+                                          OPAL_INFO_LVL_4,
                                           MCA_BASE_VAR_SCOPE_READONLY,
                                           &mca_oob_tcp_component.max_recon_attempts);
 
@@ -452,7 +454,7 @@ static int tcp_component_register(void)
 
 static char **split_and_resolve(char **orig_str, char *name);
 
-static bool component_available(void)
+static int component_available(void)
 {
     int i, rc;
     char **interfaces = NULL;
@@ -463,12 +465,6 @@ static bool component_available(void)
 
     opal_output_verbose(5, orte_oob_base_framework.framework_output,
                         "oob:tcp: component_available called");
-
-    /* if we are an APP and we are not direct launched,
-     * then we don't want to be considered */
-    if (!ORTE_PROC_IS_TOOL && ORTE_PROC_IS_APP && !orte_standalone_operation) {
-        return false;
-    }
 
     /* if interface include was given, construct a list
      * of those interfaces which match the specifications - remember,
@@ -487,7 +483,7 @@ static bool component_available(void)
         excluding = true;
     }
 
-    /* look at all available interfaces */ 
+    /* look at all available interfaces */
     for (i = opal_ifbegin(); i >= 0; i = opal_ifnext(i)) {
         if (OPAL_SUCCESS != opal_ifindextoaddr(i, (struct sockaddr*) &my_ss,
                                                sizeof (my_ss))) {
@@ -495,7 +491,6 @@ static bool component_available(void)
                          i, opal_ifindextokindex(i));
             continue;
         }
-        
         /* ignore non-ip4/6 interfaces */
         if (AF_INET != my_ss.ss_family
 #if OPAL_ENABLE_IPV6
@@ -504,7 +499,6 @@ static bool component_available(void)
             ) {
             continue;
         }
-        
         kindex = opal_ifindextokindex(i);
         if (kindex <= 0) {
             continue;
@@ -526,7 +520,7 @@ static bool component_available(void)
             if (OPAL_ERR_NETWORK_NOT_PARSEABLE == rc) {
                 orte_show_help("help-oob-tcp.txt", "not-parseable", true);
                 opal_argv_free(interfaces);
-                return false;
+                return ORTE_ERR_BAD_PARAM;
             }
             /* if we are including, then ignore this if not present */
             if (including) {
@@ -562,7 +556,7 @@ static bool component_available(void)
          * IP interfaces that are "up" on the same subnet (because that's a Bad Idea). Note
          * that we should only check for this after applying the relevant include/exclude
          * list MCA params. If we detect redundant ports, we can also automatically ignore
-         * them so that applications won't hang. 
+         * them so that applications won't hang.
          */
 
         /* add this address to our connections */
@@ -581,7 +575,7 @@ static bool component_available(void)
                                 opal_net_get_hostname((struct sockaddr*) &my_ss),
                                 (AF_INET == my_ss.ss_family) ? "V4" : "V6");
             opal_argv_append_nosize(&mca_oob_tcp_component.ipv6conns, opal_net_get_hostname((struct sockaddr*) &my_ss));
-#endif
+#endif // OPAL_ENABLE_IPV6
         } else {
             opal_output_verbose(10, orte_oob_base_framework.framework_output,
                                 "%s oob:tcp:init ignoring %s from out list of connections",
@@ -605,14 +599,14 @@ static bool component_available(void)
         } else if (excluding) {
             orte_show_help("help-oob-tcp.txt", "excluded-all", true, mca_oob_tcp_component.if_exclude);
         }
-        return false;
+        return ORTE_ERR_NOT_AVAILABLE;
     }
 
     /* set the module event base - this is where we would spin off a separate
      * progress thread if so desired */
     mca_oob_tcp_module.ev_base = orte_event_base;
 
-    return true;
+    return ORTE_SUCCESS;
 }
 
 /* Start all modules */
@@ -638,7 +632,7 @@ static int component_startup(void)
 
 static void component_shutdown(void)
 {
-    int i=0;
+    int i = 0;
     opal_list_item_t *item;
 
     opal_output_verbose(2, orte_oob_base_framework.framework_output,
@@ -665,9 +659,9 @@ static void component_shutdown(void)
 static int component_send(orte_rml_send_t *msg)
 {
     opal_output_verbose(5, orte_oob_base_framework.framework_output,
-                        "%s oob:tcp:send_nb to peer %s:%d",
+                        "%s oob:tcp:send_nb to peer %s:%d to channel=%d seq = %d",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                        ORTE_NAME_PRINT(&msg->dst), msg->tag);
+                        ORTE_NAME_PRINT(&msg->dst), msg->tag,msg->dst_channel, msg->seq_num );
 
     /* the module is potentially running on its own event
      * base, so all it can do is push our send request
@@ -724,7 +718,7 @@ static char* component_get_addr(void)
         free(tmp);
         free(tp);
     }
-#endif
+#endif // OPAL_ENABLE_IPV6
 
     /* return our uri */
     return cptr;
@@ -748,8 +742,8 @@ static int component_set_addr(orte_process_name_t *peer,
         tcpuri = strdup(uris[i]);
         if (NULL == tcpuri) {
             opal_output_verbose(2, orte_oob_base_framework.framework_output,
-                            "%s oob:tcp: out of memory",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+                                "%s oob:tcp: out of memory",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
             continue;
         }
         if (0 == strncmp(uris[i], "tcp:", 4)) {
@@ -759,14 +753,14 @@ static int component_set_addr(orte_process_name_t *peer,
 #if OPAL_ENABLE_IPV6
             af_family = AF_INET6;
             host = tcpuri + strlen("tcp6://");
-#else
+#else // OPAL_ENABLE_IPV6
             /* we don't support this connection type */
             opal_output_verbose(2, orte_oob_base_framework.framework_output,
                                 "%s oob:tcp: address %s not supported",
                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), uris[i]);
             free(tcpuri);
             continue;
-#endif
+#endif // OPAL_ENABLE_IPV6
         } else {
             /* not one of ours */
             opal_output_verbose(2, orte_oob_base_framework.framework_output,
@@ -781,7 +775,6 @@ static int component_set_addr(orte_process_name_t *peer,
                             "%s oob:tcp: working peer %s address %s",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                             ORTE_NAME_PRINT(peer), uris[i]);
-        
         /* separate the ports from the network addrs */
         ports = strrchr(tcpuri, ':');
         *ports = '\0';
@@ -802,7 +795,7 @@ static int component_set_addr(orte_process_name_t *peer,
                 host[strlen(host)-1] = '\0';
             }
         }
-#endif
+#endif // OPAL_ENABLE_IPV6
         addrs = opal_argv_split(hptr, ',');
 
 
@@ -818,7 +811,7 @@ static int component_set_addr(orte_process_name_t *peer,
                     }
                     host = mca_oob_tcp_component.ipv6conns[0];
                 } else {
-#endif
+#endif // OPAL_ENABLE_IPV6
                     if (NULL == mca_oob_tcp_component.ipv4conns ||
                         NULL == mca_oob_tcp_component.ipv4conns[0]) {
                         continue;
@@ -830,7 +823,7 @@ static int component_set_addr(orte_process_name_t *peer,
             } else {
                 host = addrs[j];
             }
- 
+
             /* pass this proc, and its ports, to the
              * module for handling - this module will be responsible
              * for communicating with the proc via this network.
@@ -887,7 +880,7 @@ static int component_ft_event(int state)
 
     return ORTE_SUCCESS;
 }
-#endif
+#endif // OPAL_ENABLE_FT_CR
 
 void mca_oob_tcp_component_set_module(int fd, short args, void *cbdata)
 {
@@ -1060,6 +1053,8 @@ void mca_oob_tcp_component_hop_unknown(int fd, short args, void *cbdata)
     snd->dst = mop->snd->hdr.dst;
     snd->origin = mop->snd->hdr.origin;
     snd->tag = mop->snd->hdr.tag;
+    snd->dst_channel = mop->snd->hdr.channel;
+    snd->seq_num = mop->snd->hdr.seq_num;
     snd->data = mop->snd->data;
     snd->count = mop->snd->hdr.nbytes;
     snd->cbfunc.iov = NULL;
@@ -1137,7 +1132,7 @@ static char **split_and_resolve(char **orig_str, char *name)
         str = strchr(argv[i], '/');
         if (NULL == str) {
             orte_show_help("help-oob-tcp.txt", "invalid if_inexclude",
-                           true, name, orte_process_info.nodename, 
+                           true, name, orte_process_info.nodename,
                            tmp, "Invalid specification (missing \"/\")");
             free(argv[i]);
             free(tmp);
@@ -1148,7 +1143,7 @@ static char **split_and_resolve(char **orig_str, char *name)
 
         /* Now convert the IPv4 address */
         ((struct sockaddr*) &argv_inaddr)->sa_family = AF_INET;
-        ret = inet_pton(AF_INET, argv[i], 
+        ret = inet_pton(AF_INET, argv[i],
                         &((struct sockaddr_in*) &argv_inaddr)->sin_addr);
         free(argv[i]);
 
@@ -1165,11 +1160,11 @@ static char **split_and_resolve(char **orig_str, char *name)
                             name,
                             opal_net_get_hostname((struct sockaddr*) &argv_inaddr),
                             argv_prefix);
-            
+
         /* Go through all interfaces and see if we can find a match */
         for (if_index = opal_ifbegin(); if_index >= 0;
-             if_index = opal_ifnext(if_index)) {
-            opal_ifindextoaddr(if_index, 
+                           if_index = opal_ifnext(if_index)) {
+            opal_ifindextoaddr(if_index,
                                (struct sockaddr*) &if_inaddr,
                                sizeof(if_inaddr));
             if (opal_net_samenetwork((struct sockaddr*) &argv_inaddr,
@@ -1178,7 +1173,6 @@ static char **split_and_resolve(char **orig_str, char *name)
                 break;
             }
         }
-        
         /* If we didn't find a match, keep trying */
         if (if_index < 0) {
             orte_show_help("help-oob-tcp.txt", "invalid if_inexclude",

@@ -6,17 +6,18 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 /*
@@ -53,12 +54,8 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 #ifdef HAVE_TARGETCONDITIONALS_H
 #include <TargetConditionals.h>
 #endif
@@ -74,13 +71,14 @@
 
 #include "mpi.h"
 #include "ompi/errhandler/errcode.h"
+#include "ompi/errhandler/errcode-internal.h"
 #include "ompi/datatype/ompi_datatype.h"
 #include "mpi_MPI.h"
 #include "mpiJava.h"
 
-ompi_java_globals_t ompi_java;
+ompi_java_globals_t ompi_java = {0};
 int ompi_mpi_java_eager = 65536;
-opal_free_list_t ompi_java_buffers;
+opal_free_list_t ompi_java_buffers = {{0}};
 static void *libmpi = NULL;
 
 static void bufferConstructor(ompi_java_buffer_t *item)
@@ -126,11 +124,6 @@ OBJ_CLASS_INSTANCE(ompi_java_buffer_t,
  */
 jint JNI_OnLoad(JavaVM *vm, void *reserved)
 {
-    char *env = getenv("OMPI_ATTACH");
-    if (NULL != env && 0 < atoi(env)) {
-        volatile int _dbg = 1;
-        while (_dbg) poll(NULL, 0, 1);
-    }
     libmpi = dlopen("libmpi." OPAL_DYN_LIB_SUFFIX, RTLD_NOW | RTLD_GLOBAL);
 
     if(libmpi == NULL)
@@ -300,7 +293,10 @@ JNIEXPORT jobjectArray JNICALL Java_mpi_MPI_Init_1jni(
         jstring jc = (*env)->NewStringUTF(env, sargs[i]);
         (*env)->SetObjectArrayElement(env, value, i, jc);
         (*env)->DeleteLocalRef(env, jc);
+        free (sargs[i]);
     }
+
+    free (sargs);
 
     findClasses(env);
     initFreeList();
@@ -528,8 +524,11 @@ static void* getBuffer(JNIEnv *env, ompi_java_buffer_t **item, int size)
         opal_free_list_item_t *freeListItem;
         freeListItem = opal_free_list_get (&ompi_java_buffers);
 
-        ompi_java_exceptionCheck(env, NULL == freeListItem ? OMPI_ERROR :
-                                 OMPI_SUCCESS);
+        ompi_java_exceptionCheck(env, NULL == freeListItem ? MPI_ERR_NO_MEM :
+                                 MPI_SUCCESS);
+        if (NULL == freeListItem) {
+            return NULL;
+        }
 
         *item = (ompi_java_buffer_t*)freeListItem;
         return (*item)->buffer;
@@ -985,7 +984,7 @@ void ompi_java_getBooleanArray(JNIEnv *env, jbooleanArray array,
 
     for(i = 0; i < length; i++)
         cb[i] = jb[i];
-    
+
     *jptr = jb;
     *cptr = cb;
 }
@@ -1046,6 +1045,14 @@ void ompi_java_releasePtrArray(JNIEnv *env, jlongArray array,
 
 jboolean ompi_java_exceptionCheck(JNIEnv *env, int rc)
 {
+    if (rc < 0) {
+        /* handle ompi error code */
+        rc = ompi_errcode_get_mpi_code (rc);
+        /* ompi_mpi_errcode_get_class CAN NOT handle negative error codes.
+         * all Open MPI MPI error codes should be > 0. */
+        assert (rc >= 0);
+    }
+
     if(MPI_SUCCESS == rc)
     {
         return JNI_FALSE;
@@ -1078,7 +1085,7 @@ void* ompi_java_attrSet(JNIEnv *env, jbyteArray jval)
 
     (*env)->GetByteArrayRegion(env, jval,
             0, length, (jbyte*)cval + sizeof(int));
-    
+
     return cval;
 }
 

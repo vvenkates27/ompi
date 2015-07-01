@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -14,9 +14,9 @@
  *                         reserved.
  * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -48,7 +48,7 @@ int orte_oob_base_select(void)
     mca_base_component_list_item_t *cli, *cmp, *c2;
     mca_oob_base_component_t *component, *c3;
     bool added;
-    int i;
+    int i, rc;
 
     /* Query all available components and ask if their transport is available */
     OPAL_LIST_FOREACH(cli, &orte_oob_base_framework.framework_components, mca_base_component_list_item_t) {
@@ -71,10 +71,12 @@ int orte_oob_base_select(void)
                             "mca:oob:select: Querying component [%s]",
                             component->oob_base.mca_component_name);
 
+        rc = component->available();
+
         /* If the component is not available, then skip it as
          * it has no available interfaces
          */
-        if (!component->available()) {
+        if (ORTE_SUCCESS != rc && ORTE_ERR_FORCE_SELECT != rc) {
             opal_output_verbose(5, orte_oob_base_framework.framework_output,
                                 "mca:oob:select: Skipping component [%s] - no available interfaces",
                                 component->oob_base.mca_component_name );
@@ -87,6 +89,22 @@ int orte_oob_base_select(void)
                                 "mca:oob:select: Skipping component [%s] - failed to startup",
                                 component->oob_base.mca_component_name );
             continue;
+        }
+
+        if (ORTE_ERR_FORCE_SELECT == rc) {
+            /* this component shall be the *only* component allowed
+             * for use, so shutdown and remove any prior ones */
+            while (NULL != (cmp = (mca_base_component_list_item_t*)opal_list_remove_first(&orte_oob_base.actives))) {
+                c3 = (mca_oob_base_component_t *) cmp->cli_component;
+                if (NULL != c3->shutdown) {
+                    c3->shutdown();
+                }
+                OBJ_RELEASE(cmp);
+            }
+            c2 = OBJ_NEW(mca_base_component_list_item_t);
+            c2->cli_component = (mca_base_component_t*)component;
+            opal_list_append(&orte_oob_base.actives, &c2->super);
+            break;
         }
 
         /* record it, but maintain priority order */

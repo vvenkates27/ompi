@@ -6,7 +6,7 @@
  * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -14,10 +14,12 @@
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -34,7 +36,7 @@
 /*
  * Table for Fortran <-> C op handle conversion
  */
-opal_pointer_array_t *ompi_op_f_to_c_table;
+opal_pointer_array_t *ompi_op_f_to_c_table = {0};
 
 
 /*
@@ -54,48 +56,48 @@ static void ompi_op_destruct(ompi_op_t *eh);
 /*
  * Class instance
  */
-OBJ_CLASS_INSTANCE(ompi_op_t, opal_object_t, 
+OBJ_CLASS_INSTANCE(ompi_op_t, opal_object_t,
                    ompi_op_construct, ompi_op_destruct);
 
 
 /*
  * Intrinsic MPI_Op objects (_addr flavors are for F03 bindings)
  */
-ompi_predefined_op_t ompi_mpi_op_null;
+ompi_predefined_op_t ompi_mpi_op_null = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_null_addr = &ompi_mpi_op_null;
-ompi_predefined_op_t ompi_mpi_op_max;
+ompi_predefined_op_t ompi_mpi_op_max = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_max_addr = &ompi_mpi_op_max;
-ompi_predefined_op_t ompi_mpi_op_min;
+ompi_predefined_op_t ompi_mpi_op_min = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_min_addr = &ompi_mpi_op_min;
-ompi_predefined_op_t ompi_mpi_op_sum;
+ompi_predefined_op_t ompi_mpi_op_sum = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_sum_addr = &ompi_mpi_op_sum;
-ompi_predefined_op_t ompi_mpi_op_prod;
+ompi_predefined_op_t ompi_mpi_op_prod = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_prod_addr = &ompi_mpi_op_prod;
-ompi_predefined_op_t ompi_mpi_op_land;
+ompi_predefined_op_t ompi_mpi_op_land = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_land_addr = &ompi_mpi_op_land;
-ompi_predefined_op_t ompi_mpi_op_band;
+ompi_predefined_op_t ompi_mpi_op_band = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_band_addr = &ompi_mpi_op_band;
-ompi_predefined_op_t ompi_mpi_op_lor;
+ompi_predefined_op_t ompi_mpi_op_lor = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_lor_addr = &ompi_mpi_op_lor;
-ompi_predefined_op_t ompi_mpi_op_bor;
+ompi_predefined_op_t ompi_mpi_op_bor = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_bor_addr = &ompi_mpi_op_bor;
-ompi_predefined_op_t ompi_mpi_op_lxor;
+ompi_predefined_op_t ompi_mpi_op_lxor = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_lxor_addr = &ompi_mpi_op_lxor;
-ompi_predefined_op_t ompi_mpi_op_bxor;
+ompi_predefined_op_t ompi_mpi_op_bxor = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_bxor_addr = &ompi_mpi_op_bxor;
-ompi_predefined_op_t ompi_mpi_op_maxloc;
+ompi_predefined_op_t ompi_mpi_op_maxloc = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_maxloc_addr = &ompi_mpi_op_maxloc;
-ompi_predefined_op_t ompi_mpi_op_minloc;
+ompi_predefined_op_t ompi_mpi_op_minloc = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_minloc_addr = &ompi_mpi_op_minloc;
-ompi_predefined_op_t ompi_mpi_op_replace;
+ompi_predefined_op_t ompi_mpi_op_replace = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_replace_addr = &ompi_mpi_op_replace;
-ompi_predefined_op_t ompi_mpi_op_no_op;
+ompi_predefined_op_t ompi_mpi_op_no_op = {{{0}}};
 ompi_predefined_op_t *ompi_mpi_op_no_op_addr = &ompi_mpi_op_no_op;
 
 /*
  * Map from ddt->id to position in op function pointer array
  */
-int ompi_op_ddt_map[OMPI_DATATYPE_MAX_PREDEFINED];
+int ompi_op_ddt_map[OMPI_DATATYPE_MAX_PREDEFINED] = {0};
 
 /* Get the c complex operator associated with a fortran complex type */
 #define FORTRAN_COMPLEX_OP_TYPE_X(type) OMPI_OP_BASE_TYPE_ ## type
@@ -216,49 +218,49 @@ int ompi_op_init(void)
 
     /* Create the intrinsic ops */
 
-    if (OMPI_SUCCESS != 
+    if (OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_null.op, OMPI_OP_BASE_FORTRAN_NULL,
                       FLAGS, "MPI_NULL") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_max.op, OMPI_OP_BASE_FORTRAN_MAX,
                       FLAGS, "MPI_MAX") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_min.op, OMPI_OP_BASE_FORTRAN_MIN,
                       FLAGS, "MPI_MIN") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_sum.op, OMPI_OP_BASE_FORTRAN_SUM,
                       FLAGS_NO_FLOAT, "MPI_SUM") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_prod.op, OMPI_OP_BASE_FORTRAN_PROD,
                       FLAGS_NO_FLOAT, "MPI_PROD") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_land.op, OMPI_OP_BASE_FORTRAN_LAND,
                       FLAGS, "MPI_LAND") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_band.op, OMPI_OP_BASE_FORTRAN_BAND,
                       FLAGS, "MPI_BAND") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_lor.op, OMPI_OP_BASE_FORTRAN_LOR,
                       FLAGS, "MPI_LOR") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_bor.op, OMPI_OP_BASE_FORTRAN_BOR,
                       FLAGS, "MPI_BOR") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_lxor.op, OMPI_OP_BASE_FORTRAN_LXOR,
                       FLAGS, "MPI_LXOR") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_bxor.op, OMPI_OP_BASE_FORTRAN_BXOR,
                       FLAGS, "MPI_BXOR") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_maxloc.op, OMPI_OP_BASE_FORTRAN_MAXLOC,
                       FLAGS, "MPI_MAXLOC") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_minloc.op, OMPI_OP_BASE_FORTRAN_MINLOC,
                       FLAGS, "MPI_MINLOC") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_replace.op, OMPI_OP_BASE_FORTRAN_REPLACE,
                       FLAGS, "MPI_REPLACE") ||
-        OMPI_SUCCESS != 
+        OMPI_SUCCESS !=
         add_intrinsic(&ompi_mpi_op_no_op.op, OMPI_OP_BASE_FORTRAN_NO_OP,
                       FLAGS, "MPI_NO_OP")) {
         return OMPI_ERROR;
@@ -376,7 +378,7 @@ void ompi_op_set_cxx_callback(ompi_op_t *op, MPI_User_function *fn)
     /* The OMPI C++ intercept was previously stored in
        op->o_func.fort_fn by ompi_op_create_user().  So save that in
        cxx.intercept_fn and put the user's fn in cxx.user_fn. */
-    op->o_func.cxx_data.intercept_fn = 
+    op->o_func.cxx_data.intercept_fn =
         (ompi_op_cxx_handler_fn_t *) op->o_func.fort_fn;
     op->o_func.cxx_data.user_fn = fn;
 }
@@ -393,7 +395,7 @@ void ompi_op_set_java_callback(ompi_op_t *op, void *jnienv,
     /* The OMPI Java intercept was previously stored in
        op->o_func.fort_fn by ompi_op_create_user().  So save that in
        cxx.intercept_fn and put the user's fn in cxx.user_fn. */
-    op->o_func.java_data.intercept_fn = 
+    op->o_func.java_data.intercept_fn =
         (ompi_op_java_handler_fn_t *) op->o_func.fort_fn;
     op->o_func.java_data.jnienv = jnienv;
     op->o_func.java_data.object = object;
@@ -431,7 +433,7 @@ static int add_intrinsic(ompi_op_t *op, int fort_handle, int flags,
     } else {
         return OMPI_SUCCESS;
     }
-}  
+}
 
 
 /*
@@ -443,7 +445,7 @@ static void ompi_op_construct(ompi_op_t *new_op)
 
     /* assign entry in fortran <-> c translation array */
 
-    new_op->o_f_to_c_index = 
+    new_op->o_f_to_c_index =
         opal_pointer_array_add(ompi_op_f_to_c_table, new_op);
 
     /* Set everything to NULL so that we can intelligently free

@@ -12,6 +12,9 @@
  *                         reserved.
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * Copyright (c) 2012-2013 Sandia National Laboratories.  All rights reserved.
+ * Copyright (c) 2015      Intel, Inc. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,9 +57,9 @@ struct ompi_osc_pt2pt_outstanding_lock_t {
     int target;
     int assert;
     bool flushing;
-    int32_t lock_acks_received;
-    int32_t unlock_acks_received;
-    int32_t flush_acks_received;
+    int32_t lock_acks_expected;
+    int32_t unlock_acks_expected;
+    int32_t flush_acks_expected;
     uint64_t serial_number;
     int32_t type;
 };
@@ -136,7 +139,7 @@ static inline int ompi_osc_pt2pt_lock_self (ompi_osc_pt2pt_module_t *module, omp
         /* If locking local, can't be non-blocking according to the
            standard.  We need to wait for the ack here. */
         OPAL_THREAD_LOCK(&module->lock);
-        while (0 == lock->lock_acks_received) {
+        while (lock->lock_acks_expected) {
             opal_condition_wait(&module->cond, &module->lock);
         }
         OPAL_THREAD_UNLOCK(&module->lock);
@@ -163,19 +166,25 @@ static inline void ompi_osc_pt2pt_unlock_self (ompi_osc_pt2pt_module_t *module, 
     /* need to ensure we make progress */
     opal_progress();
 
-    OPAL_THREAD_ADD32(&lock->unlock_acks_received, 1);
+    OPAL_THREAD_ADD32(&lock->unlock_acks_expected, -1);
 }
 
 static inline int ompi_osc_pt2pt_lock_remote (ompi_osc_pt2pt_module_t *module, int target, ompi_osc_pt2pt_outstanding_lock_t *lock)
 {
     ompi_osc_pt2pt_header_lock_t lock_req;
+
     int ret;
 
     /* generate a lock request */
     lock_req.base.type = OMPI_OSC_PT2PT_HDR_TYPE_LOCK_REQ;
     lock_req.base.flags = OMPI_OSC_PT2PT_HDR_FLAG_VALID | OMPI_OSC_PT2PT_HDR_FLAG_PASSIVE_TARGET;
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT && OPAL_ENABLE_DEBUG
+    lock_req.padding[0] = 0;
+    lock_req.padding[1] = 0;
+#endif
     lock_req.lock_type = lock->type;
     lock_req.lock_ptr = (uint64_t) (uintptr_t) lock;
+    OSC_PT2PT_HTON(&lock_req, module, target);
 
     ret = ompi_osc_pt2pt_control_send (module, target, &lock_req, sizeof (lock_req));
     if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
@@ -196,9 +205,14 @@ static inline int ompi_osc_pt2pt_unlock_remote (ompi_osc_pt2pt_module_t *module,
 
     unlock_req.base.type = OMPI_OSC_PT2PT_HDR_TYPE_UNLOCK_REQ;
     unlock_req.base.flags = OMPI_OSC_PT2PT_HDR_FLAG_VALID | OMPI_OSC_PT2PT_HDR_FLAG_PASSIVE_TARGET;
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT && OPAL_ENABLE_DEBUG
+    unlock_req.padding[0] = 0;
+    unlock_req.padding[1] = 0;
+#endif
     unlock_req.frag_count = frag_count;
     unlock_req.lock_type = lock->type;
     unlock_req.lock_ptr = (uint64_t) (uintptr_t) lock;
+    OSC_PT2PT_HTON(&unlock_req, module, target);
 
     if (peer->active_frag && peer->active_frag->remain_len < sizeof (unlock_req)) {
         /* the peer should expect one more packet */
@@ -238,6 +252,7 @@ static inline int ompi_osc_pt2pt_flush_remote (ompi_osc_pt2pt_module_t *module, 
                          target, flush_req.frag_count));
 
     /* send control message with unlock request and count */
+    OSC_PT2PT_HTON(&flush_req, module, target);
     ret = ompi_osc_pt2pt_control_send (module, target, &flush_req, sizeof (flush_req));
     if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
         return ret;
@@ -255,6 +270,9 @@ static int ompi_osc_pt2pt_lock_internal_execute (ompi_osc_pt2pt_module_t *module
     int ret;
 
     if (0 == (assert & MPI_MODE_NOCHECK)) {
+        lock->lock_acks_expected = (-1 == target) ? ompi_comm_size (module->comm) : 1;
+        lock->unlock_acks_expected = lock->lock_acks_expected;
+
         if (my_rank != target && target != -1) {
             ret = ompi_osc_pt2pt_lock_remote (module, target, lock);
         } else {
@@ -278,12 +296,6 @@ static int ompi_osc_pt2pt_lock_internal_execute (ompi_osc_pt2pt_module_t *module
                 }
             }
 
-        }
-    } else {
-        if (-1 == target) {
-            lock->lock_acks_received = ompi_comm_size(module->comm);
-        } else {
-            lock->lock_acks_received = 1;
         }
     }
 
@@ -317,8 +329,8 @@ static int ompi_osc_pt2pt_lock_internal (int lock_type, int target, int assert, 
     }
 
     lock->target = target;
-    lock->lock_acks_received = 0;
-    lock->unlock_acks_received = 0;
+    lock->lock_acks_expected = 0;
+    lock->unlock_acks_expected = 0;
     lock->serial_number = OPAL_THREAD_ADD64((int64_t *) &module->lock_serial_number, 1);
     lock->type = lock_type;
     lock->assert = assert;
@@ -340,7 +352,7 @@ static int ompi_osc_pt2pt_lock_internal (int lock_type, int target, int assert, 
         peer->access_epoch = true;
     }
 
-    module->passive_target_access_epoch = true;
+    ++module->passive_target_access_epoch;
 
     opal_list_append(&module->outstanding_locks, &lock->super);
     OPAL_THREAD_UNLOCK(&module->lock);
@@ -361,14 +373,10 @@ static int ompi_osc_pt2pt_unlock_internal (int target, ompi_win_t *win)
     ompi_osc_pt2pt_outstanding_lock_t *lock = NULL;
     int my_rank = ompi_comm_rank (module->comm);
     ompi_osc_pt2pt_peer_t *peer = NULL;
-    int lock_acks_expected;
     int ret = OMPI_SUCCESS;
 
     if (-1 != target) {
-        lock_acks_expected = 1;
         peer = module->peers + target;
-    } else {
-        lock_acks_expected = ompi_comm_size (module->comm);
     }
 
     OPAL_OUTPUT_VERBOSE((25, ompi_osc_base_framework.framework_output,
@@ -387,11 +395,11 @@ static int ompi_osc_pt2pt_unlock_internal (int target, ompi_win_t *win)
     opal_list_remove_item (&module->outstanding_locks, &lock->super);
 
     OPAL_OUTPUT_VERBOSE((25, ompi_osc_base_framework.framework_output,
-                         "ompi_osc_pt2pt_unlock_internal: lock acks received: %d, expected: %d",
-                         lock->lock_acks_received, lock_acks_expected));
+                         "ompi_osc_pt2pt_unlock_internal: lock acks still expected: %d",
+                         lock->lock_acks_expected));
 
     /* wait until ack has arrived from target */
-    while (lock->lock_acks_received != lock_acks_expected) {
+    while (lock->lock_acks_expected) {
         opal_condition_wait(&module->cond, &module->lock);
     }
     OPAL_THREAD_UNLOCK(&module->lock);
@@ -437,7 +445,7 @@ static int ompi_osc_pt2pt_unlock_internal (int target, ompi_win_t *win)
 
         /* wait for unlock acks. this signals remote completion of fragments */
         OPAL_THREAD_LOCK(&module->lock);
-        while (lock->unlock_acks_received != lock_acks_expected) {
+        while (lock->unlock_acks_expected) {
             opal_condition_wait(&module->cond, &module->lock);
         }
         OPAL_THREAD_UNLOCK(&module->lock);
@@ -451,11 +459,10 @@ static int ompi_osc_pt2pt_unlock_internal (int target, ompi_win_t *win)
     OPAL_THREAD_LOCK(&module->lock);
     if (-1 != target) {
         peer->access_epoch = false;
-        module->passive_target_access_epoch = false;
     } else {
-        module->passive_target_access_epoch = false;
         module->all_access_epoch = false;
     }
+    --module->passive_target_access_epoch;
     OPAL_THREAD_UNLOCK(&module->lock);
 
     OBJ_RELEASE(lock);
@@ -496,29 +503,28 @@ int ompi_osc_pt2pt_sync (struct ompi_win_t *win)
 static int ompi_osc_pt2pt_flush_lock (ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_outstanding_lock_t *lock,
                                       int target)
 {
-    int peer_count, ret, flush_count;
+    int ret;
     int my_rank = ompi_comm_rank (module->comm);
-
-    if (-1 == lock->target) {
-        peer_count = ompi_comm_size(module->comm);
-    } else {
-        peer_count = 1;
-    }
 
     /* wait until ack has arrived from target, since we need to be
        able to eager send before we can transfer all the data... */
     OPAL_THREAD_LOCK(&module->lock);
-    while (peer_count > lock->lock_acks_received && lock->flushing) {
+    while (lock->lock_acks_expected && lock->flushing) {
         opal_condition_wait(&module->cond, &module->lock);
     }
 
-    lock->flush_acks_received = 0;
     lock->flushing = true;
+
+    if (-1 == target) {
+        lock->flush_acks_expected = ompi_comm_size(module->comm) - 1;
+    } else {
+        lock->flush_acks_expected = 1;
+    }
+
     OPAL_THREAD_UNLOCK(&module->lock);
 
     if (-1 == target) {
         /* NTH: no local flush */
-        flush_count = ompi_comm_size(module->comm) - 1;
         for (int i = 0 ; i < ompi_comm_size(module->comm) ; ++i) {
             if (i == my_rank) {
                 continue;
@@ -530,7 +536,6 @@ static int ompi_osc_pt2pt_flush_lock (ompi_osc_pt2pt_module_t *module, ompi_osc_
             }
         }
     } else {
-        flush_count = 1;
 
         /* send control message with flush request and count */
         ret = ompi_osc_pt2pt_flush_remote (module, target, lock);
@@ -541,7 +546,7 @@ static int ompi_osc_pt2pt_flush_lock (ompi_osc_pt2pt_module_t *module, ompi_osc_
 
     /* wait for all the requests and the flush ack (meaning remote completion) */
     OPAL_THREAD_LOCK(&module->lock);
-    while (flush_count != lock->flush_acks_received) {
+    while (lock->flush_acks_expected) {
         opal_condition_wait(&module->cond, &module->lock);
     }
 
@@ -691,6 +696,7 @@ static inline int activate_lock (ompi_osc_pt2pt_module_t *module, int requestor,
         lock_ack.source = ompi_comm_rank(module->comm);
         lock_ack.windx = ompi_comm_get_cid(module->comm);
         lock_ack.lock_ptr = lock_ptr;
+        OSC_PT2PT_HTON(&lock_ack, module, requestor);
 
         OPAL_OUTPUT_VERBOSE((25, ompi_osc_base_framework.framework_output,
                              "osc pt2pt: sending lock to %d", requestor));
@@ -710,8 +716,9 @@ static inline int activate_lock (ompi_osc_pt2pt_module_t *module, int requestor,
                              "lock could not be located"));
     }
 
-    OPAL_THREAD_ADD32(&lock->lock_acks_received, 1);
-    opal_condition_broadcast (&module->cond);
+    if (0 == OPAL_THREAD_ADD32(&lock->lock_acks_expected, -1)) {
+        opal_condition_broadcast (&module->cond);
+    }
 
     return OMPI_SUCCESS;
 }
@@ -835,7 +842,9 @@ void ompi_osc_pt2pt_process_lock_ack (ompi_osc_pt2pt_module_t *module,
 
     /* no need to hold the lock to set this */
     peer->eager_send_active = true;
-    OPAL_THREAD_ADD32(&lock->lock_acks_received, 1);
+    if (0 == OPAL_THREAD_ADD32(&lock->lock_acks_expected, -1)) {
+        opal_condition_broadcast(&module->cond);
+    }
 
     opal_condition_broadcast(&module->cond);
 }
@@ -845,14 +854,16 @@ void ompi_osc_pt2pt_process_flush_ack (ompi_osc_pt2pt_module_t *module, int sour
     ompi_osc_pt2pt_outstanding_lock_t *lock;
 
     OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_framework.framework_output,
-                         "ompi_osc_pt2pt_process_unlock_ack: processing flush ack from %d for lock %" PRIu64,
+                         "ompi_osc_pt2pt_process_flush_ack: processing flush ack from %d for lock %" PRIu64,
                          source, flush_ack_header->serial_number));
 
     /* NTH: need to verify that this will work as expected */
     lock = find_outstanding_lock_by_serial (module, flush_ack_header->serial_number);
     assert (NULL != lock);
 
-    OPAL_THREAD_ADD32(&lock->flush_acks_received, 1);
+    if (0 == OPAL_THREAD_ADD32(&lock->flush_acks_expected, -1)) {
+        opal_condition_broadcast(&module->cond);
+    }
 
     opal_condition_broadcast(&module->cond);
 }
@@ -873,7 +884,7 @@ void ompi_osc_pt2pt_process_unlock_ack (ompi_osc_pt2pt_module_t *module, int sou
 
     peer->eager_send_active = false;
 
-    if (0 == OPAL_THREAD_ADD32(&lock->unlock_acks_received, 1)) {
+    if (0 == OPAL_THREAD_ADD32(&lock->unlock_acks_expected, -1)) {
         opal_condition_broadcast(&module->cond);
     }
 }
@@ -908,7 +919,16 @@ int ompi_osc_pt2pt_process_unlock (ompi_osc_pt2pt_module_t *module, int source,
 
     unlock_ack.base.type = OMPI_OSC_PT2PT_HDR_TYPE_UNLOCK_ACK;
     unlock_ack.base.flags = OMPI_OSC_PT2PT_HDR_FLAG_VALID;
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT && OPAL_ENABLE_DEBUG
+    unlock_ack.padding[0] = 0;
+    unlock_ack.padding[1] = 0;
+    unlock_ack.padding[2] = 0;
+    unlock_ack.padding[3] = 0;
+    unlock_ack.padding[4] = 0;
+    unlock_ack.padding[5] = 0;
+#endif
     unlock_ack.lock_ptr = unlock_header->lock_ptr;
+    OSC_PT2PT_HTON(&unlock_ack, module, source);
 
     ret = ompi_osc_pt2pt_control_send_unbuffered (module, source, &unlock_ack, sizeof (unlock_ack));
     if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
@@ -946,6 +966,7 @@ int ompi_osc_pt2pt_process_flush (ompi_osc_pt2pt_module_t *module, int source,
     flush_ack.base.type = OMPI_OSC_PT2PT_HDR_TYPE_FLUSH_ACK;
     flush_ack.base.flags = OMPI_OSC_PT2PT_HDR_FLAG_VALID;
     flush_ack.serial_number = flush_header->serial_number;
+    OSC_PT2PT_HTON(&flush_ack, module, source);
 
     return ompi_osc_pt2pt_control_send_unbuffered (module, source, &flush_ack, sizeof (flush_ack));
 }

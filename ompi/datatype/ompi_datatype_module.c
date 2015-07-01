@@ -15,6 +15,8 @@
  * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -366,7 +368,7 @@ const ompi_datatype_t* ompi_datatype_basicDatatypes[OMPI_DATATYPE_MPI_MAX_PREDEF
     [OMPI_DATATYPE_MPI_UNAVAILABLE] = &ompi_mpi_unavailable.dt,
 };
 
-opal_pointer_array_t ompi_datatype_f_to_c_table;
+opal_pointer_array_t ompi_datatype_f_to_c_table = {{0}};
 
 #define COPY_DATA_DESC( PDST, PSRC )                                                 \
     do {                                                                             \
@@ -518,7 +520,7 @@ int32_t ompi_datatype_init( void )
     /* The order of the data registration should be the same as the
      * one in the mpif.h file. Any modification here should be
      * reflected there !!!  Do the Fortran types first so that mpif.h
-     * can have consecutive, dense numbers. */ 
+     * can have consecutive, dense numbers. */
 
     /* This macro makes everything significantly easier to read below.
        All hail the moog!  :-) */

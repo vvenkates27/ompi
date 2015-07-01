@@ -1,16 +1,19 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -25,7 +28,7 @@
 
 
 static ompi_crcp_base_component_t none_component = {
-    /* Handle the general mca_component_t struct containing 
+    /* Handle the general mca_component_t struct containing
      *  meta information about the component itself
      */
     {
@@ -36,7 +39,7 @@ static ompi_crcp_base_component_t none_component = {
         OMPI_MAJOR_VERSION,
         OMPI_MINOR_VERSION,
         OMPI_RELEASE_VERSION,
-        
+
         /* Component open and close functions */
         ompi_crcp_base_none_open,
         ompi_crcp_base_none_close,
@@ -73,20 +76,20 @@ static ompi_crcp_base_module_t none_module = {
 
     ompi_crcp_base_none_pml_add_procs,
     ompi_crcp_base_none_pml_del_procs,
-    
+
     ompi_crcp_base_none_pml_progress,
 
     ompi_crcp_base_none_pml_iprobe,
     ompi_crcp_base_none_pml_probe,
-    
+
     ompi_crcp_base_none_pml_isend_init,
     ompi_crcp_base_none_pml_isend,
     ompi_crcp_base_none_pml_send,
-    
+
     ompi_crcp_base_none_pml_irecv_init,
     ompi_crcp_base_none_pml_irecv,
     ompi_crcp_base_none_pml_recv,
-    
+
     ompi_crcp_base_none_pml_dump,
     ompi_crcp_base_none_pml_start,
     ompi_crcp_base_none_pml_ft_event,
@@ -112,12 +115,12 @@ static ompi_crcp_base_module_t none_module = {
     ompi_crcp_base_none_btl_get,
 
     ompi_crcp_base_none_btl_dump,
-    ompi_crcp_base_none_btl_ft_event    
+    ompi_crcp_base_none_btl_ft_event
 };
 
 int ompi_crcp_base_select(void)
 {
-    int ret, exit_status = OMPI_SUCCESS;
+    int ret;
     ompi_crcp_base_component_t *best_component = NULL;
     ompi_crcp_base_module_t *best_module = NULL;
     const char *include_list = NULL;
@@ -140,7 +143,7 @@ int ompi_crcp_base_select(void)
         include_list = selection_value[0];
     }
 
-    if(0 == strncmp(include_list, "none", strlen("none")) ){ 
+    if(0 == strncmp(include_list, "none", strlen("none")) ){
         opal_output_verbose(10, ompi_crcp_base_framework.framework_output,
                             "crcp:select: Using %s component",
                             include_list);
@@ -148,11 +151,10 @@ int ompi_crcp_base_select(void)
         best_module    = &none_module;
         /* JJH: Todo: Check if none is in the list */
         /* Close all components since none will be used */
-        mca_base_components_close(0, /* Pass 0 to keep this from closing the output handle */
+        mca_base_components_close(ompi_crcp_base_framework.framework_output,
                                   &ompi_crcp_base_framework.framework_components,
                                   NULL);
-        goto skip_select;
-    }
+    } else
 
     /*
      * Select the best component
@@ -162,24 +164,17 @@ int ompi_crcp_base_select(void)
                                         (mca_base_module_t **) &best_module,
                                         (mca_base_component_t **) &best_component) ) {
         /* This will only happen if no component was selected */
-        exit_status = OMPI_ERROR;
-        goto cleanup;
+        return OMPI_ERROR;
     }
 
- skip_select:
     /* Save the winner */
     ompi_crcp_base_selected_component = *best_component;
     ompi_crcp = *best_module;
 
     /* Initialize the winner */
-    if (NULL != best_module) {
-        if (OPAL_SUCCESS != (ret = ompi_crcp.crcp_init()) ) {
-            exit_status = ret;
-            goto cleanup;
-        }
+    if (OPAL_SUCCESS != (ret = ompi_crcp.crcp_init()) ) {
+        return ret;
     }
 
- cleanup:
-
-    return exit_status;
+    return OMPI_SUCCESS;
 }

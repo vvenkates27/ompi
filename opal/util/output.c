@@ -6,17 +6,19 @@
  * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2006 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2006 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -69,7 +71,7 @@ typedef struct {
 
     char *ldi_suffix;
     int ldi_suffix_len;
-    
+
     bool ldi_stdout;
     bool ldi_stderr;
 
@@ -87,7 +89,7 @@ static void construct(opal_object_t *stream);
 static int do_open(int output_id, opal_output_stream_t * lds);
 static int open_file(int i);
 static void free_descriptor(int output_id);
-static int make_string(char **no_newline_string, output_desc_t *ldi, 
+static int make_string(char **no_newline_string, output_desc_t *ldi,
                        const char *format, va_list arglist);
 static int output(int output_id, const char *format, va_list arglist);
 
@@ -101,7 +103,7 @@ static int output(int output_id, const char *format, va_list arglist);
 
 /* global state */
 bool opal_output_redirected_to_syslog = false;
-int opal_output_redirected_syslog_pri;
+int opal_output_redirected_syslog_pri = -1;
 
 /*
  * Local state
@@ -279,7 +281,7 @@ void opal_output_reopen_all(void)
             break;
         }
 
-        /* 
+        /*
          * set this to zero to ensure that opal_output_open will
          * return this same index as the output stream id
          */
@@ -301,7 +303,7 @@ void opal_output_reopen_all(void)
         lds.lds_want_file_append = true;
         lds.lds_file_suffix = info[i].ldi_file_suffix;
 
-        /* 
+        /*
          * call opal_output_open to open the stream. The return value
          * is guaranteed to be i.  So we can ignore it.
          */
@@ -333,7 +335,7 @@ void opal_output_close(int output_id)
         free_descriptor(output_id);
 
         /* If no one has the syslog open, we should close it */
-        
+
         for (i = 0; i < OPAL_OUTPUT_MAX_STREAMS; ++i) {
             if (info[i].ldi_used && info[i].ldi_syslog) {
                 break;
@@ -383,7 +385,7 @@ void opal_output_verbose(int level, int output_id, const char *format, ...)
 /*
  * Send a message to a stream if the verbose level is high enough
  */
-void opal_output_vverbose(int level, int output_id, const char *format, 
+void opal_output_vverbose(int level, int output_id, const char *format,
                           va_list arglist)
 {
     if (output_id >= 0 && output_id < OPAL_OUTPUT_MAX_STREAMS &&
@@ -419,7 +421,7 @@ char *opal_output_string(int level, int output_id, const char *format, ...)
 /*
  * Send a message to a string if the verbose level is high enough
  */
-char *opal_output_vstring(int level, int output_id, const char *format,  
+char *opal_output_vstring(int level, int output_id, const char *format,
                           va_list arglist)
 {
     int rc;
@@ -647,7 +649,7 @@ static int do_open(int output_id, opal_output_stream_t * lds)
         info[i].ldi_suffix = NULL;
         info[i].ldi_suffix_len = 0;
     }
-    
+
     if (opal_output_redirected_to_syslog) {
         /* since all is redirected to syslog, ensure
          * we don't duplicate the output to the std places
@@ -802,7 +804,7 @@ static void free_descriptor(int output_id)
         free(ldi->ldi_suffix);
     }
     ldi->ldi_suffix = NULL;
-    
+
     if (NULL != ldi->ldi_file_suffix) {
 	    free(ldi->ldi_file_suffix);
 	}
@@ -816,7 +818,7 @@ static void free_descriptor(int output_id)
 }
 
 
-static int make_string(char **no_newline_string, output_desc_t *ldi, 
+static int make_string(char **no_newline_string, output_desc_t *ldi,
                        const char *format, va_list arglist)
 {
     size_t len, total_len;
@@ -860,7 +862,7 @@ static int make_string(char **no_newline_string, output_desc_t *ldi,
             snprintf(temp_str, temp_str_len, "%s%s%s\n",
                      ldi->ldi_prefix, *no_newline_string, ldi->ldi_suffix);
         } else {
-            snprintf(temp_str, temp_str_len, "%s%s%s", ldi->ldi_prefix, 
+            snprintf(temp_str, temp_str_len, "%s%s%s", ldi->ldi_prefix,
                      *no_newline_string, ldi->ldi_suffix);
         }
     } else if (NULL != ldi->ldi_prefix) {
@@ -868,7 +870,7 @@ static int make_string(char **no_newline_string, output_desc_t *ldi,
             snprintf(temp_str, temp_str_len, "%s%s\n",
                      ldi->ldi_prefix, *no_newline_string);
         } else {
-            snprintf(temp_str, temp_str_len, "%s%s", ldi->ldi_prefix, 
+            snprintf(temp_str, temp_str_len, "%s%s", ldi->ldi_prefix,
                      *no_newline_string);
         }
     } else if (NULL != ldi->ldi_suffix) {
@@ -876,7 +878,7 @@ static int make_string(char **no_newline_string, output_desc_t *ldi,
             snprintf(temp_str, temp_str_len, "%s%s\n",
                      *no_newline_string, ldi->ldi_suffix);
         } else {
-            snprintf(temp_str, temp_str_len, "%s%s", 
+            snprintf(temp_str, temp_str_len, "%s%s",
                      *no_newline_string, ldi->ldi_suffix);
         }
     } else {
@@ -886,10 +888,10 @@ static int make_string(char **no_newline_string, output_desc_t *ldi,
             snprintf(temp_str, temp_str_len, "%s", *no_newline_string);
         }
     }
-    
+
     return OPAL_SUCCESS;
 }
-    
+
 /*
  * Do the actual output.  Take a va_list so that we can be called from
  * multiple different places, even functions that took "..." as input
@@ -934,15 +936,15 @@ static int output(int output_id, const char *format, va_list arglist)
 
         /* stdout output */
         if (ldi->ldi_stdout) {
-            write(fileno(stdout), out, (int)strlen(out)); 
+            write(fileno(stdout), out, (int)strlen(out));
             fflush(stdout);
         }
 
         /* stderr output */
         if (ldi->ldi_stderr) {
-            write((-1 == default_stderr_fd) ? 
+            write((-1 == default_stderr_fd) ?
                   fileno(stderr) : default_stderr_fd,
-                  out, (int)strlen(out)); 
+                  out, (int)strlen(out));
             fflush(stderr);
         }
 

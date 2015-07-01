@@ -6,7 +6,7 @@ dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
 dnl                         of Tennessee Research Foundation.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
@@ -22,9 +22,9 @@ dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl
 dnl $COPYRIGHT$
-dnl 
+dnl
 dnl Additional copyrights may follow
-dnl 
+dnl
 dnl $HEADER$
 dnl
 
@@ -52,17 +52,17 @@ AC_ARG_ENABLE(coverage,
               AC_HELP_STRING([--enable-coverage],
                              [enable code coverage files to be generated]))
 if test "$enable_coverage" = "yes"; then
-    if test "$enable_shared" = "yes"; then 
-        AC_MSG_WARN([Code coverage can run only with static libraries. Please 
-run configure with --enable-static --disable-shared if 
-you want code coverage. Also ensure that you execute 
-make clean too ensure removal of all leftover shared 
+    if test "$enable_shared" = "yes"; then
+        AC_MSG_WARN([Code coverage can run only with static libraries. Please
+run configure with --enable-static --disable-shared if
+you want code coverage. Also ensure that you execute
+make clean too ensure removal of all leftover shared
 mpi libraries])
         AC_MSG_ERROR([Cannot continue processing])
     fi
     AC_MSG_RESULT([yes])
     WANT_COVERAGE=1
-else 
+else
     AC_MSG_RESULT([no])
     WANT_COVERAGE=0
 fi
@@ -79,7 +79,7 @@ AC_ARG_ENABLE(branch-probabilities,
 if test "$enable_branch_probabilities" = "yes"; then
     AC_MSG_RESULT([yes])
     WANT_BRANCH_PROBABILITIES=1
-else 
+else
     AC_MSG_RESULT([no])
     WANT_BRANCH_PROBABILITIES=0
 fi
@@ -90,7 +90,7 @@ fi
 #
 
 AC_MSG_CHECKING([if want to debug memory usage])
-AC_ARG_ENABLE(mem-debug, 
+AC_ARG_ENABLE(mem-debug,
     AC_HELP_STRING([--enable-mem-debug],
                    [enable memory debugging (debugging only) (default: disabled)]))
 if test "$enable_mem_debug" = "yes"; then
@@ -114,7 +114,7 @@ AC_DEFINE_UNQUOTED(OPAL_ENABLE_MEM_DEBUG, $WANT_MEM_DEBUG,
 #
 
 AC_MSG_CHECKING([if want to profile memory usage])
-AC_ARG_ENABLE(mem-profile, 
+AC_ARG_ENABLE(mem-profile,
     AC_HELP_STRING([--enable-mem-profile],
                    [enable memory profiling (debugging only) (default: disabled)]))
 if test "$enable_mem_profile" = "yes"; then
@@ -138,7 +138,7 @@ AC_DEFINE_UNQUOTED(OPAL_ENABLE_MEM_PROFILE, $WANT_MEM_PROFILE,
 #
 
 AC_MSG_CHECKING([if want developer-level compiler pickyness])
-AC_ARG_ENABLE(picky, 
+AC_ARG_ENABLE(picky,
     AC_HELP_STRING([--enable-picky],
                    [enable developer-level compiler pickyness when building Open MPI (default: disabled)]))
 if test "$enable_picky" = "yes"; then
@@ -160,7 +160,7 @@ fi
 #
 
 AC_MSG_CHECKING([if want developer-level debugging code])
-AC_ARG_ENABLE(debug, 
+AC_ARG_ENABLE(debug,
     AC_HELP_STRING([--enable-debug],
                    [enable developer-level debugging code (not for general MPI users!) (default: disabled)]))
 if test "$enable_debug" = "yes"; then
@@ -173,7 +173,7 @@ fi
 
 
 AC_MSG_CHECKING([if want to developer-level timing framework])
-AC_ARG_ENABLE(timing, 
+AC_ARG_ENABLE(timing,
     AC_HELP_STRING([--enable-timing],
                    [enable developer-level timing code (not for general MPI users!) (default: disabled)]))
 if test "$enable_timing" = "yes"; then
@@ -320,9 +320,32 @@ else
      AC_MSG_RESULT([no])
      opal_want_heterogeneous=0
 fi
-AC_DEFINE_UNQUOTED([OPAL_ENABLE_HETEROGENEOUS_SUPPORT], 
-                   [$opal_want_heterogeneous], 
+AC_DEFINE_UNQUOTED([OPAL_ENABLE_HETEROGENEOUS_SUPPORT],
+                   [$opal_want_heterogeneous],
                    [Enable features required for heterogeneous support])
+
+
+if test "$opal_want_heterogeneous" = 1; then
+    ompi_cv_c_word_size_align=yes
+else
+    AC_CACHE_CHECK([if word-sized integers must be word-size aligned],
+        [ompi_cv_c_word_size_align],
+        [AC_LANG_PUSH(C)
+         AC_RUN_IFELSE([AC_LANG_PROGRAM([dnl
+#include <stdlib.h>], [[    long data[2] = {0, 0};
+    long *lp;
+    int *ip;
+    ip = (int*) data;
+    ip++;
+    lp = (long*) ip;
+    return lp[0]; ]])],
+            [ompi_cv_c_word_size_align=no],
+            [ompi_cv_c_word_size_align=yes],
+            [ompi_cv_c_word_size_align=yes])])
+fi
+AS_IF([test $ompi_cv_c_word_size_align = yes], [results=1], [results=0])
+AC_DEFINE_UNQUOTED([OPAL_ALIGN_WORD_SIZE_INTEGERS], [$results],
+    [set to 1 if word-size integers must be aligned to word-size padding to prevent bus errors])
 
 
 #

@@ -42,7 +42,7 @@ BEGIN_C_DECLS
 struct mca_btl_portals4_component_t {
     /* base BTL component */
     mca_btl_base_component_2_0_0_t super;
-    
+
     unsigned int num_btls;
     unsigned int max_btls; /* Maximum number of accepted Portals4 cards */
 
@@ -120,12 +120,8 @@ struct mca_btl_portals4_module_t {
     /** MD handle for sending ACKS */
     ptl_handle_md_t zero_md_h;
 
-    /** Send MD handle(s).  Use opal_mtl_portals4_get_md() to get the right md */
-#if OPAL_PORTALS4_MAX_MD_SIZE < OPAL_PORTALS4_MAX_VA_SIZE
-    ptl_handle_md_t *send_md_hs;
-#else
+    /** Send MD handle */
     ptl_handle_md_t send_md_h;
-#endif
 
     /** long message receive overflow ME.  Persistent ME, first in
         overflow list on the recv_idx portal table. */
@@ -177,36 +173,6 @@ typedef struct mca_btl_portals4_module_t mca_btl_portals4_module_t;
 
 #define REQ_BTL_TABLE_ID	2
 
-/*
- * See note in ompi/mtl/portals4/mtl_portals4.h for how we deal with
- * platforms that don't allow us to crate an MD that covers all of
- * memory.
- */
-static inline void
-opal_btl_portals4_get_md(const void *ptr, ptl_handle_md_t *md_h, void **base_ptr, mca_btl_portals4_module_t *portals4_btl)
-{
-#if OPAL_PORTALS4_MAX_MD_SIZE < OPAL_PORTALS4_MAX_VA_SIZE
-    int mask = (1ULL << (OPAL_PORTALS4_MAX_VA_SIZE - OPAL_PORTALS4_MAX_MD_SIZE + 1)) - 1;
-    int which = (((uintptr_t) ptr) >> (OPAL_PORTALS4_MAX_MD_SIZE - 1)) & mask;
-    *md_h = portals4_btl->send_md_hs[which];
-    *base_ptr = (void*) (which * (1ULL << (OPAL_PORTALS4_MAX_MD_SIZE - 1)));
-#else
-    *md_h = portals4_btl->send_md_h;
-    *base_ptr = 0;
-#endif
-}
-
-
-static inline int
-mca_btl_portals4_get_num_mds(void)
-{
-#if OPAL_PORTALS4_MAX_MD_SIZE < OPAL_PORTALS4_MAX_VA_SIZE
-    return (1 << (OPAL_PORTALS4_MAX_VA_SIZE - OPAL_PORTALS4_MAX_MD_SIZE + 1));
-#else
-    return 1;
-#endif
-}
-
 int mca_btl_portals4_component_progress(void);
 void mca_btl_portals4_free_module(mca_btl_portals4_module_t *portals4_btl);
 
@@ -225,17 +191,17 @@ int mca_btl_portals4_del_procs(struct mca_btl_base_module_t* btl_base,
                               struct opal_proc_t **procs,
                               struct mca_btl_base_endpoint_t** peers);
 
-mca_btl_base_descriptor_t* 
-mca_btl_portals4_alloc(struct mca_btl_base_module_t* btl_base, 
+mca_btl_base_descriptor_t*
+mca_btl_portals4_alloc(struct mca_btl_base_module_t* btl_base,
                       struct mca_btl_base_endpoint_t* endpoint,
                       uint8_t order,
                       size_t size,
-                      uint32_t flags); 
+                      uint32_t flags);
 
-int mca_btl_portals4_free(struct mca_btl_base_module_t* btl_base, 
-                         mca_btl_base_descriptor_t* des); 
+int mca_btl_portals4_free(struct mca_btl_base_module_t* btl_base,
+                         mca_btl_base_descriptor_t* des);
 
-mca_btl_base_descriptor_t* 
+mca_btl_base_descriptor_t*
 mca_btl_portals4_prepare_src(struct mca_btl_base_module_t* btl_base,
                             struct mca_btl_base_endpoint_t* peer,
                             struct opal_convertor_t* convertor,
@@ -246,7 +212,7 @@ mca_btl_portals4_prepare_src(struct mca_btl_base_module_t* btl_base,
 
 int mca_btl_portals4_send(struct mca_btl_base_module_t* btl_base,
                          struct mca_btl_base_endpoint_t* btl_peer,
-                         struct mca_btl_base_descriptor_t* descriptor, 
+                         struct mca_btl_base_descriptor_t* descriptor,
                          mca_btl_base_tag_t tag);
 
 
@@ -258,7 +224,7 @@ int mca_btl_portals4_sendi(struct mca_btl_base_module_t* btl_base,
                           size_t payload_size,
                           uint8_t order,
                           uint32_t flags,
-                          mca_btl_base_tag_t tag, 
+                          mca_btl_base_tag_t tag,
                           mca_btl_base_descriptor_t** des);
 
 int mca_btl_portals4_put(struct mca_btl_base_module_t* btl_base,
@@ -284,6 +250,8 @@ int mca_btl_portals4_get_error(int ptl_error);
 struct mca_btl_base_registration_handle_t {
     /** Portals4 match bits */
     ptl_match_bits_t key;
+    /** Portals4 me_h */
+    ptl_handle_me_t me_h;
 };
 
 /*

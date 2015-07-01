@@ -5,7 +5,7 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
@@ -13,9 +13,9 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -42,26 +42,26 @@ int nreps = 100;
 int nthreads = 2;
 int enable_verbose = 0;
 
-volatile int32_t vol32;
-int32_t val32;
-int32_t old32;
-int32_t new32;
+volatile int32_t vol32 = 0;
+int32_t val32 = 0;
+int32_t old32 = 0;
+int32_t new32 = 0;
 
 #if OPAL_HAVE_ATOMIC_MATH_64
-volatile int64_t vol64;
-int64_t val64;
-int64_t old64;
-int64_t new64;
+volatile int64_t vol64 = 0;
+int64_t val64 = 0;
+int64_t old64 = 0;
+int64_t new64 = 0;
 #endif
 
-volatile int volint;
-int valint;
-int oldint;
-int newint;
+volatile int volint = 0;
+int valint = 0;
+int oldint = 0;
+int newint = 0;
 
-volatile void *volptr;
-void *oldptr;
-void *newptr;
+volatile void *volptr = NULL;
+void *oldptr = NULL;
+void *newptr = NULL;
 
 
 static void *thread_main(void *arg)
@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 {
     int tid;
     pthread_t *th;
-    
+
     if (argc != 2) {
         printf("*** Incorrect number of arguments.  Skipping test\n");
         return 77;

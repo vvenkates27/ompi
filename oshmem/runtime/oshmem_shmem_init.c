@@ -1,11 +1,13 @@
 /*
  * Copyright (c) 2013      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -101,83 +103,9 @@ int oshmem_mpi_thread_provided = SHMEM_THREAD_SINGLE;
 long *preconnect_value = 0;
 int shmem_api_logger_output = -1;
 
-MPI_Comm oshmem_comm_world;
+MPI_Comm oshmem_comm_world = {0};
 
 opal_thread_t *oshmem_mpi_main_thread = NULL;
-
-/* Constants for the Fortran layer.  These values are referred to via
- common blocks in the Fortran equivalents.  See
- ompi/mpi/f77/constants.h for a more detailed explanation.
-
- The values are *NOT* initialized.  We do not use the values of
- these constants; only their addresses (because they're always
- passed by reference by Fortran).  
-
- Initializing upon instantiation these can reveal size and/or
- alignment differences between Fortran and C (!) which can cause
- warnings or errors upon linking (e.g., making static libraries with
- the intel 9.0 compilers on 64 bit platforms shows alignment
- differences between libmpi.a and the user's application, resulting
- in a linker warning).  FWIW, if you initialize these variables in
- functions (i.e., not at the instantiation in the global scope), the
- linker somehow "figures it all out" (w.r.t. different alignments
- between fortan common blocks and the corresponding C variables) and
- no linker warnings occur.
-
- Note that the rationale for the types of each of these variables is
- discussed in ompi/include/mpif-common.h.  Do not change the types
- without also modifying ompi/mpi/f77/constants.h and
- ompi/include/mpif-common.h.
- */
-
-#define INST(type, upper_case, lower_case, single_u, double_u)   \
-    type lower_case; \
-type upper_case; \
-type single_u;  \
-type double_u
-
-INST(int,
-     MPI_FORTRAN_BOTTOM,
-     mpi_fortran_bottom,
-     mpi_fortran_bottom_,
-     mpi_fortran_bottom__);
-INST(int,
-     MPI_FORTRAN_IN_PLACE,
-     mpi_fortran_in_place,
-     mpi_fortran_in_place_,
-     mpi_fortran_in_place__);
-INST(char *,
-     MPI_FORTRAN_ARGV_NULL,
-     mpi_fortran_argv_null,
-     mpi_fortran_argv_null_,
-     mpi_fortran_argv_null__);
-INST(double,
-     MPI_FORTRAN_ARGVS_NULL,
-     mpi_fortran_argvs_null,
-     mpi_fortran_argvs_null_,
-     mpi_fortran_argvs_null__);
-INST(int *,
-     MPI_FORTRAN_ERRCODES_IGNORE,
-     mpi_fortran_errcodes_ignore,
-     mpi_fortran_errcodes_ignore_,
-     mpi_fortran_errcodes_ignore__);
-INST(int *,
-     MPI_FORTRAN_STATUS_IGNORE,
-     mpi_fortran_status_ignore,
-     mpi_fortran_status_ignore_,
-     mpi_fortran_status_ignore__);
-INST(double,
-     MPI_FORTRAN_STATUSES_IGNORE,
-     mpi_fortran_statuses_ignore,
-     mpi_fortran_statuses_ignore_,
-     mpi_fortran_statuses_ignore__);
-
-/*
- * Hash tables for MPI_Type_create_f90* functions
- */
-opal_hash_table_t ompi_mpi_f90_integer_hashtable;
-opal_hash_table_t ompi_mpi_f90_real_hashtable;
-opal_hash_table_t ompi_mpi_f90_complex_hashtable;
 
 static int _shmem_init(int argc, char **argv, int requested, int *provided);
 
@@ -196,8 +124,8 @@ static void* shmem_opal_thread(void* argc)
 }
 #endif
 
-int oshmem_shmem_inglobalexit;
-int oshmem_shmem_globalexit_status;
+int oshmem_shmem_inglobalexit = 0;
+int oshmem_shmem_globalexit_status = -1;
 
 static void sighandler__SIGUSR1(int signum)
 {

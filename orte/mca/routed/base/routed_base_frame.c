@@ -1,16 +1,18 @@
 /*
  * Copyright (c) 2007-2013 Los Alamos National Security, LLC.
- *                         All rights reserved. 
+ *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -65,15 +67,15 @@ OBJ_CLASS_INSTANCE(orte_routed_jobfam_t, opal_object_t,
                    jfamconst, jfamdest);
 
 orte_routed_module_t orte_routed = {0};
-bool orte_routed_base_wait_sync;
-opal_pointer_array_t orte_routed_jobfams;
+bool orte_routed_base_wait_sync = false;
+opal_pointer_array_t orte_routed_jobfams = {{0}};
 
 static int orte_routed_base_open(mca_base_open_flag_t flags)
 {
     orte_routed_jobfam_t *jfam;
 
     orte_routed_base_wait_sync = false;
-    
+
     /* Initialize storage of remote hnp uris */
     OBJ_CONSTRUCT(&orte_routed_jobfams, opal_pointer_array_t);
     opal_pointer_array_init(&orte_routed_jobfams, 8, INT_MAX, 8);
@@ -100,7 +102,7 @@ static int orte_routed_base_close(void)
     if (NULL != orte_routed.finalize) {
         orte_routed.finalize();
     }
-    
+
     for (i=0; i < orte_routed_jobfams.size; i++) {
         if (NULL != (jfam = (orte_routed_jobfam_t*)opal_pointer_array_get_item(&orte_routed_jobfams, i))) {
             OBJ_RELEASE(jfam);

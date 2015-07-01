@@ -604,14 +604,12 @@ enum {
 #define MPI_ERR_RMA_FLAVOR            70
 #define MPI_ERR_RMA_SHARED            71
 #define MPI_T_ERR_INVALID             72
+#define MPI_T_ERR_INVALID_NAME        73
 
 /* Per MPI-3 p349 47, MPI_ERR_LASTCODE must be >= the last predefined
    MPI_ERR_<foo> code. Set the last code to allow some room for adding
    error codes without breaking ABI. */
 #define MPI_ERR_LASTCODE              92
-
-#define MPI_ERR_SYSRESOURCE          -2
-
 
 /*
  * Comparison results.  Don't change the order of these, the group
@@ -1177,6 +1175,11 @@ OMPI_DECLSPEC extern MPI_Fint *MPI_F_STATUSES_IGNORE;
 #define MPI_TYPECLASS_REAL       2
 #define MPI_TYPECLASS_COMPLEX    3
 
+/* Aint helper macros (MPI-3.1) */
+#define MPI_Aint_add(base, disp) ((MPI_Aint) ((char *) (base) + (disp)))
+#define MPI_Aint_diff(addr1, addr2) ((MPI_Aint) ((char *) (addr1) - (char *) (addr2)))
+#define PMPI_Aint_add(base, disp) MPI_Aint_add(base, disp)
+#define PMPI_Aint_diff(addr1, addr2) PMPI_Aint_diff(addr1, addr2)
 
 /*
  * MPI API
@@ -1615,8 +1618,8 @@ OMPI_DECLSPEC  int MPI_Put(const void *origin_addr, int origin_count, MPI_Dataty
                            int target_rank, MPI_Aint target_disp, int target_count,
                            MPI_Datatype target_datatype, MPI_Win win);
 OMPI_DECLSPEC  int MPI_Query_thread(int *provided);
-OMPI_DECLSPEC  int MPI_Raccumulate(void *origin_addr, int origin_count, MPI_Datatype origin_datatype, 
-                                   int target_rank, MPI_Aint target_disp, int target_count, 
+OMPI_DECLSPEC  int MPI_Raccumulate(void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+                                   int target_rank, MPI_Aint target_disp, int target_count,
                                    MPI_Datatype target_datatype, MPI_Op op, MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int MPI_Recv_init(void *buf, int count, MPI_Datatype datatype, int source,
                                  int tag, MPI_Comm comm, MPI_Request *request);
@@ -1646,16 +1649,16 @@ OMPI_DECLSPEC  MPI_Request MPI_Request_f2c(MPI_Fint request);
 OMPI_DECLSPEC  int MPI_Request_free(MPI_Request *request);
 OMPI_DECLSPEC  int MPI_Request_get_status(MPI_Request request, int *flag,
                                           MPI_Status *status);
-OMPI_DECLSPEC  int MPI_Rget(void *origin_addr, int origin_count, MPI_Datatype origin_datatype, 
+OMPI_DECLSPEC  int MPI_Rget(void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
                             int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
                             MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int MPI_Rget_accumulate(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
                                        void *result_addr, int result_count, MPI_Datatype result_datatype,
-                                       int target_rank, MPI_Aint target_disp, int target_count, 
+                                       int target_rank, MPI_Aint target_disp, int target_count,
                                        MPI_Datatype target_datatype, MPI_Op op,
                                        MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int MPI_Rput(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
-                            int target_rank, MPI_Aint target_disp, int target_cout, 
+                            int target_rank, MPI_Aint target_disp, int target_cout,
                             MPI_Datatype target_datatype, MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int MPI_Rsend(const void *ibuf, int count, MPI_Datatype datatype, int dest,
                              int tag, MPI_Comm comm);
@@ -2309,8 +2312,8 @@ OMPI_DECLSPEC  int PMPI_Put(const void *origin_addr, int origin_count, MPI_Datat
                             int target_rank, MPI_Aint target_disp, int target_count,
                             MPI_Datatype target_datatype, MPI_Win win);
 OMPI_DECLSPEC  int PMPI_Query_thread(int *provided);
-OMPI_DECLSPEC  int PMPI_Raccumulate(void *origin_addr, int origin_count, MPI_Datatype origin_datatype, 
-                                    int target_rank, MPI_Aint target_disp, int target_count, 
+OMPI_DECLSPEC  int PMPI_Raccumulate(void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+                                    int target_rank, MPI_Aint target_disp, int target_count,
                                     MPI_Datatype target_datatype, MPI_Op op, MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int PMPI_Recv_init(void *buf, int count, MPI_Datatype datatype, int source,
                                   int tag, MPI_Comm comm, MPI_Request *request);
@@ -2340,16 +2343,16 @@ OMPI_DECLSPEC  MPI_Request PMPI_Request_f2c(MPI_Fint request);
 OMPI_DECLSPEC  int PMPI_Request_free(MPI_Request *request);
 OMPI_DECLSPEC  int PMPI_Request_get_status(MPI_Request request, int *flag,
                                            MPI_Status *status);
-OMPI_DECLSPEC  int PMPI_Rget(void *origin_addr, int origin_count, MPI_Datatype origin_datatype, 
+OMPI_DECLSPEC  int PMPI_Rget(void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
                              int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
                              MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int PMPI_Rget_accumulate(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
                                         void *result_addr, int result_count, MPI_Datatype result_datatype,
-                                        int target_rank, MPI_Aint target_disp, int target_count, 
+                                        int target_rank, MPI_Aint target_disp, int target_count,
                                         MPI_Datatype target_datatype, MPI_Op op,
                                         MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int PMPI_Rput(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
-                             int target_rank, MPI_Aint target_disp, int target_cout, 
+                             int target_rank, MPI_Aint target_disp, int target_cout,
                              MPI_Datatype target_datatype, MPI_Win win, MPI_Request *request);
 OMPI_DECLSPEC  int PMPI_Rsend(const void *ibuf, int count, MPI_Datatype datatype, int dest,
                               int tag, MPI_Comm comm);
@@ -2592,7 +2595,7 @@ OMPI_DECLSPEC  int PMPI_T_pvar_get_info(int pvar_index, char *name, int *name_le
                                         int *verbosity, int *var_class, MPI_Datatype *datatype,
                                         MPI_T_enum *enumtype, char *desc, int *desc_len, int *bind,
                                         int *readonly, int *continuous, int *atomic);
-OMPI_DECLSPEC  int PMPI_T_pvar_get_index (const char *name, int *pvar_index);
+OMPI_DECLSPEC  int PMPI_T_pvar_get_index (const char *name, int var_class, int *pvar_index);
 OMPI_DECLSPEC  int PMPI_T_pvar_session_create(MPI_T_pvar_session *session);
 OMPI_DECLSPEC  int PMPI_T_pvar_session_free(MPI_T_pvar_session *session);
 OMPI_DECLSPEC  int PMPI_T_pvar_handle_alloc(MPI_T_pvar_session session, int pvar_index,
@@ -2642,7 +2645,7 @@ OMPI_DECLSPEC  int MPI_T_pvar_get_info(int pvar_index, char *name, int *name_len
                                        int *verbosity, int *var_class, MPI_Datatype *datatype,
                                        MPI_T_enum *enumtype, char *desc, int *desc_len, int *bind,
                                        int *readonly, int *continuous, int *atomic);
-OMPI_DECLSPEC  int MPI_T_pvar_get_index (const char *name, int *pvar_index);
+OMPI_DECLSPEC  int MPI_T_pvar_get_index (const char *name, int var_class, int *pvar_index);
 OMPI_DECLSPEC  int MPI_T_pvar_session_create(MPI_T_pvar_session *session);
 OMPI_DECLSPEC  int MPI_T_pvar_session_free(MPI_T_pvar_session *session);
 OMPI_DECLSPEC  int MPI_T_pvar_handle_alloc(MPI_T_pvar_session session, int pvar_index,

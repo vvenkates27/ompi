@@ -4,19 +4,19 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
 #include "oshmem_config.h"
 #include <stdio.h>
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif  /* HAVE_UNIST_H */
@@ -43,10 +43,10 @@
 /*
  * Global variables
  */
-mca_spml_base_module_t mca_spml;
+mca_spml_base_module_t mca_spml = {0};
 
-mca_spml_base_component_t mca_spml_base_selected_component;
-opal_pointer_array_t mca_spml_base_spml;
+mca_spml_base_component_t mca_spml_base_selected_component = {{0}};
+opal_pointer_array_t mca_spml_base_spml = {{0}};
 
 
 static int mca_spml_base_register(mca_base_register_flag_t flags)
@@ -109,7 +109,7 @@ static int mca_spml_base_open(mca_base_open_flag_t flags)
     OBJ_CONSTRUCT(&mca_spml_base_spml, opal_pointer_array_t);
 
     /* Open up all available components */
-    if (OPAL_SUCCESS != 
+    if (OPAL_SUCCESS !=
         mca_base_framework_components_open(&oshmem_spml_base_framework, flags)) {
         return OSHMEM_ERROR;
     }

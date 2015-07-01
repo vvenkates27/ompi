@@ -10,9 +10,9 @@
  *                         All rights reserved.
  * Copyright (c) 2014      Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -22,9 +22,7 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif  /* HAVE_UNISTD_H */
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 
 #include "opal/util/output.h"
 #include "opal/dss/dss.h"
@@ -300,31 +298,83 @@ static void proc_errors(int fd, short args, void *cbdata)
                              "%s errmgr:default:orted daemon %s exited",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_NAME_PRINT(proc)));
-        /* are any of my children still alive */
-        for (i=0; i < orte_local_children->size; i++) {
-            if (NULL != (child = (orte_proc_t*)opal_pointer_array_get_item(orte_local_children, i))) {
-                if (ORTE_FLAG_TEST(child, ORTE_PROC_FLAG_ALIVE)) {
-                    OPAL_OUTPUT_VERBOSE((5, orte_state_base_framework.framework_output,
-                                         "%s errmgr:default:orted[%s(%d)] proc %s is alive",
-                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                         __FILE__, __LINE__,
-                                         ORTE_NAME_PRINT(&child->name)));
-                    goto cleanup;
+        /* if we are using static ports, then it is possible that the HNP
+         * will not see this termination. So if the HNP didn't order us
+         * to terminate, then we should ensure it knows */
+        if (orte_static_ports && !orte_orteds_term_ordered) {
+            /* send an alert to the HNP */
+            alert = OBJ_NEW(opal_buffer_t);
+            /* pack update state command */
+            cmd = ORTE_PLM_UPDATE_PROC_STATE;
+            if (ORTE_SUCCESS != (rc = opal_dss.pack(alert, &cmd, 1, ORTE_PLM_CMD))) {
+                ORTE_ERROR_LOG(rc);
+                return;
+            }
+            /* get the proc_t */
+            if (NULL == (child = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, proc->vpid))) {
+                ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
+                ORTE_FORCED_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+                goto cleanup;
+            }
+            /* set the exit code to reflect the problem */
+            child->exit_code = ORTE_ERR_COMM_FAILURE;
+            /* pack only the data for this daemon - have to start with the jobid
+             * so the receiver can unpack it correctly
+             */
+            if (ORTE_SUCCESS != (rc = opal_dss.pack(alert, &proc->jobid, 1, ORTE_JOBID))) {
+                ORTE_ERROR_LOG(rc);
+                return;
+            }
+
+            /* now pack the daemon's info */
+            if (ORTE_SUCCESS != (rc = pack_state_for_proc(alert, child))) {
+                ORTE_ERROR_LOG(rc);
+                return;
+            }
+            /* send it */
+            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base_framework.framework_output,
+                                 "%s errmgr:default_orted reporting lost connection to daemon %s",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 ORTE_NAME_PRINT(proc)));
+            if (0 > (rc = orte_rml.send_buffer_nb(ORTE_PROC_MY_HNP, alert,
+                                                  ORTE_RML_TAG_PLM,
+                                                  orte_rml_send_callback, NULL))) {
+                ORTE_ERROR_LOG(rc);
+                OBJ_RELEASE(alert);
+            }
+            /* mark that we notified the HNP for this job so we don't do it again */
+            orte_set_attribute(&jdata->attributes, ORTE_JOB_FAIL_NOTIFIED, ORTE_ATTR_LOCAL, NULL, OPAL_BOOL);
+            /* continue on */
+            goto cleanup;
+        }
+
+        if (orte_orteds_term_ordered) {
+            /* are any of my children still alive */
+            for (i=0; i < orte_local_children->size; i++) {
+                if (NULL != (child = (orte_proc_t*)opal_pointer_array_get_item(orte_local_children, i))) {
+                    if (ORTE_FLAG_TEST(child, ORTE_PROC_FLAG_ALIVE)) {
+                        OPAL_OUTPUT_VERBOSE((5, orte_state_base_framework.framework_output,
+                                             "%s errmgr:default:orted[%s(%d)] proc %s is alive",
+                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                             __FILE__, __LINE__,
+                                             ORTE_NAME_PRINT(&child->name)));
+                        goto cleanup;
+                    }
                 }
             }
-        }
-        /* if all my routes and children are gone, then terminate
-           ourselves nicely (i.e., this is a normal termination) */
-        if (0 == orte_routed.num_routes()) {
-            OPAL_OUTPUT_VERBOSE((2, orte_errmgr_base_framework.framework_output,
-                                 "%s errmgr:default:orted all routes gone - exiting",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
-            ORTE_ACTIVATE_JOB_STATE(NULL, ORTE_JOB_STATE_DAEMONS_TERMINATED);
-        } else {
-            OPAL_OUTPUT_VERBOSE((2, orte_errmgr_base_framework.framework_output,
-                                 "%s errmgr:default:orted not exiting, num_routes() == %d",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 (int)orte_routed.num_routes()));
+            /* if all my routes and children are gone, then terminate
+               ourselves nicely (i.e., this is a normal termination) */
+            if (0 == orte_routed.num_routes()) {
+                OPAL_OUTPUT_VERBOSE((2, orte_errmgr_base_framework.framework_output,
+                                     "%s errmgr:default:orted all routes gone - exiting",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+                ORTE_ACTIVATE_JOB_STATE(NULL, ORTE_JOB_STATE_DAEMONS_TERMINATED);
+            } else {
+                OPAL_OUTPUT_VERBOSE((2, orte_errmgr_base_framework.framework_output,
+                                     "%s errmgr:default:orted not exiting, num_routes() == %d",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     (int)orte_routed.num_routes()));
+            }
         }
         /* if not, then we can continue */
         goto cleanup;
@@ -350,7 +400,7 @@ static void proc_errors(int fd, short args, void *cbdata)
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          orte_proc_state_to_str(state),
                          ORTE_NAME_PRINT(proc)));
- 
+
     if (ORTE_PROC_STATE_TERM_NON_ZERO == state) {
         /* update the state */
         child->state = state;
@@ -518,7 +568,7 @@ static void proc_errors(int fd, short args, void *cbdata)
                              "%s errmgr:default_orted reporting all procs in %s terminated",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_JOBID_PRINT(jdata->jobid)));
-        
+
         /* remove all of this job's children from the global list */
         for (i=0; i < orte_local_children->size; i++) {
             if (NULL == (ptr = (orte_proc_t*)opal_pointer_array_get_item(orte_local_children, i))) {
@@ -692,7 +742,7 @@ static void killprocs(orte_jobid_t job, orte_vpid_t vpid)
     orte_proc_t proc;
     int rc;
 
-    if (ORTE_JOBID_WILDCARD == job 
+    if (ORTE_JOBID_WILDCARD == job
         && ORTE_VPID_WILDCARD == vpid) {
         if (ORTE_SUCCESS != (rc = orte_odls.kill_local_procs(NULL))) {
             ORTE_ERROR_LOG(rc);

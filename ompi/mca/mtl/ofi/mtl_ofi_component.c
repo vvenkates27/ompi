@@ -12,15 +12,7 @@
  * $HEADER$
  */
 
-#include "ompi_config.h"
-
-#include "opal/mca/event/event.h"
-#include "opal/util/output.h"
-#include "opal/mca/pmix/pmix.h"
-
 #include "mtl_ofi.h"
-#include "mtl_ofi_types.h"
-#include "mtl_ofi_request.h"
 
 static int ompi_mtl_ofi_component_open(void);
 static int ompi_mtl_ofi_component_query(mca_base_module_t **module, int *priority);
@@ -43,8 +35,7 @@ mca_mtl_ofi_component_t mca_mtl_ofi_component = {
             MCA_MTL_BASE_VERSION_2_0_0,
 
             .mca_component_name = "ofi",
-            MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION,
-                                  OMPI_RELEASE_VERSION),
+            OFI_COMPAT_MCA_VERSION,
             .mca_open_component = ompi_mtl_ofi_component_open,
             .mca_close_component = ompi_mtl_ofi_component_close,
             .mca_query_component = ompi_mtl_ofi_component_query,
@@ -91,13 +82,12 @@ ompi_mtl_ofi_component_open(void)
     ompi_mtl_ofi.domain =  NULL;
     ompi_mtl_ofi.av     =  NULL;
     ompi_mtl_ofi.cq     =  NULL;
-    ompi_mtl_ofi.mr     =  NULL;
     ompi_mtl_ofi.ep     =  NULL;
 
     return OMPI_SUCCESS;
 }
 
-static int 
+static int
 ompi_mtl_ofi_component_query(mca_base_module_t **module, int *priority)
 {
     *priority = param_priority;
@@ -130,11 +120,8 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
      * mode:  Select capabilities MTL is prepared to support.
      *        In this case, MTL will pass in context into communication calls
      * ep_type:  reliable datagram operation
-     * caps:     Capabilities required from the provider.  The bits specified
-     *           implement MPI semantics.
-     *           Tagged is used to support tag matching.
-     *           We expect to register all memory up front for use with this
-     *           endpoint, so the MTL requires dynamic memory regions
+     * caps:     Capabilities required from the provider.
+     *           Tag matching is specified to implement MPI semantics.
      */
     hints = fi_allocinfo();
     if (!hints) {
@@ -146,7 +133,6 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
     hints->mode             = FI_CONTEXT;
     hints->ep_attr->type    = FI_EP_RDM;      /* Reliable datagram         */
     hints->caps             = FI_TAGGED;      /* Tag matching interface    */
-    hints->caps            |= FI_DYNAMIC_MR;  /* Global dynamic mem region */
 
     /**
      * Refine filter for additional capabilities
@@ -243,6 +229,11 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
     }
 
     /**
+     * Save the maximum inject size.
+     */
+    ompi_mtl_ofi.max_inject_size = prov->tx_attr->inject_size;
+
+    /**
      * Create the objects that will be bound to the endpoint.
      * The objects include:
      *     - completion queue for events
@@ -267,26 +258,6 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
     if (ret) {
         opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
                             "%s:%d: fi_av_open failed: %s\n",
-                            __FILE__, __LINE__, fi_strerror(-ret));
-        goto error;
-    }
-
-    /**
-     * All OFI communication routines require at least one MR.
-     * This MTL only needs a single MR.
-     */
-    ret = fi_mr_reg(ompi_mtl_ofi.domain,  /* In:  Domain object              */
-                    0,                    /* In:  Lower memory address       */
-                    UINTPTR_MAX,          /* In:  Upper memory address       */
-                    FI_SEND | FI_RECV,    /* In:  Expose MR for read/write   */
-                    0ULL,                 /* In:  base MR offset             */
-                    0ULL,                 /* In:  requested key              */
-                    0ULL,                 /* In:  No flags                   */
-                    &ompi_mtl_ofi.mr,     /* Out: memregion object           */
-                    NULL);                /* Context: memregion events       */
-    if (0 != ret) {
-        opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
-                            "%s:%d: fi_mr_reg failed: %s\n",
                             __FILE__, __LINE__, fi_strerror(-ret));
         goto error;
     }
@@ -346,12 +317,13 @@ ompi_mtl_ofi_component_init(bool enable_progress_threads,
         goto error;
     }
 
-    OPAL_MODEX_SEND(ret, PMIX_SYNC_REQD, PMIX_GLOBAL,
-                    &mca_mtl_ofi_component.super.mtl_version,
-                    &ep_name[0], namelen);
+    OFI_COMPAT_MODEX_SEND(ret,
+                          &mca_mtl_ofi_component.super.mtl_version,
+                          &ep_name,
+                          namelen);
     if (OMPI_SUCCESS != ret) {
         opal_output_verbose(1, ompi_mtl_base_framework.framework_output,
-                            "%s:%d: opal_modex_send failed: %d\n",
+                            "%s:%d: modex_send failed: %d\n",
                             __FILE__, __LINE__, ret);
         goto error;
     }
@@ -388,9 +360,6 @@ error:
     }
     if (ompi_mtl_ofi.cq) {
         (void) fi_close((fid_t)ompi_mtl_ofi.cq);
-    }
-    if (ompi_mtl_ofi.mr) {
-        (void) fi_close((fid_t)ompi_mtl_ofi.mr);
     }
     if (ompi_mtl_ofi.ep) {
         (void) fi_close((fid_t)ompi_mtl_ofi.ep);

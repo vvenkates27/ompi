@@ -12,16 +12,7 @@
 #ifndef MTL_OFI_TYPES_H_HAS_BEEN_INCLUDED
 #define MTL_OFI_TYPES_H_HAS_BEEN_INCLUDED
 
-#include "ompi_config.h"
-#include "ompi/mca/mtl/mtl.h"
-#include "ompi/mca/mtl/base/base.h"
-#include "ompi/communicator/communicator.h"
-
-#include <rdma/fabric.h>
-#include <rdma/fi_domain.h>
-#include <rdma/fi_endpoint.h>
-
-#include "mtl_ofi_endpoint.h"
+#include "mtl_ofi.h"
 
 BEGIN_C_DECLS
 
@@ -43,9 +34,6 @@ typedef struct mca_mtl_ofi_module_t {
     /** Completion queue handle */
     struct fid_cq *cq;
 
-    /** Memory region handle */
-    struct fid_mr *mr;
-
     /** Endpoint to communicate on */
     struct fid_ep *ep;
 
@@ -57,6 +45,9 @@ typedef struct mca_mtl_ofi_module_t {
 
     /** Optional user-specified OFI provider name */
     char *provider_name;
+
+    /** Maximum inject size */
+    size_t max_inject_size;
 
 } mca_mtl_ofi_module_t;
 

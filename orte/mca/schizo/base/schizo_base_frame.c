@@ -1,18 +1,18 @@
 /*
  * Copyright (c) 2015      Intel, Inc. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#endif
 
 #include "orte/mca/mca.h"
 #include "opal/util/argv.h"
@@ -35,7 +35,7 @@
 /*
  * Global variables
  */
-orte_schizo_base_t orte_schizo_base;
+orte_schizo_base_t orte_schizo_base = {{{0}}};
 orte_schizo_base_module_t orte_schizo = {
     orte_schizo_base_parse_cli,
     orte_schizo_base_parse_env,

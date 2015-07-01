@@ -6,16 +6,18 @@
  * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -32,12 +34,12 @@
 /*
  * Table for Fortran <-> C file handle conversion
  */
-opal_pointer_array_t ompi_file_f_to_c_table; 
+opal_pointer_array_t ompi_file_f_to_c_table = {{0}};
 
 /*
  * MPI_FILE_NULL (_addr flavor is for F03 bindings)
  */
-ompi_predefined_file_t  ompi_mpi_file_null;
+ompi_predefined_file_t  ompi_mpi_file_null = {{{0}}};
 ompi_predefined_file_t  *ompi_mpi_file_null_addr = &ompi_mpi_file_null;
 
 
@@ -64,7 +66,7 @@ int ompi_file_init(void)
 {
     /* Setup file array */
 
-    OBJ_CONSTRUCT(&ompi_file_f_to_c_table, opal_pointer_array_t); 
+    OBJ_CONSTRUCT(&ompi_file_f_to_c_table, opal_pointer_array_t);
     if( OPAL_SUCCESS != opal_pointer_array_init(&ompi_file_f_to_c_table, 0,
                                                 OMPI_FORTRAN_HANDLE_MAX, 64) ) {
         return OMPI_ERROR;
@@ -89,7 +91,7 @@ int ompi_file_init(void)
 /*
  * Back end to MPI_FILE_OPEN
  */
-int ompi_file_open(struct ompi_communicator_t *comm, char *filename, 
+int ompi_file_open(struct ompi_communicator_t *comm, char *filename,
                    int amode, struct ompi_info_t *info, ompi_file_t **fh)
 {
     int ret;
@@ -142,7 +144,7 @@ int ompi_file_open(struct ompi_communicator_t *comm, char *filename,
 /*
  * Back end to MPI_FILE_CLOSE.
  */
-int ompi_file_close(ompi_file_t **file) 
+int ompi_file_close(ompi_file_t **file)
 {
     (*file)->f_flags |= OMPI_FILE_ISCLOSED;
     OBJ_RELEASE(*file);
@@ -174,18 +176,18 @@ int ompi_file_finalize(void)
     max = opal_pointer_array_get_size(&ompi_file_f_to_c_table);
     for (num_unnamed = i = 0; i < max; ++i) {
         file = (ompi_file_t *)opal_pointer_array_get_item(&ompi_file_f_to_c_table, i);
-        
+
         /* If the file was closed but still exists because the user
            told us to never free handles, then do an OBJ_RELEASE it
            and all is well.  Then get the value again and see if it's
            actually been freed. */
 
-        if (NULL != file && ompi_debug_no_free_handles && 
+        if (NULL != file && ompi_debug_no_free_handles &&
             0 == (file->f_flags & OMPI_FILE_ISCLOSED)) {
             OBJ_RELEASE(file);
             file = (ompi_file_t *)opal_pointer_array_get_item(&ompi_file_f_to_c_table, i);
-        } 
-        
+        }
+
         if (NULL != file) {
 
             /* If the user wanted warnings about MPI object leaks,
@@ -205,7 +207,7 @@ int ompi_file_finalize(void)
         opal_output(0, "WARNING: %lu unnamed MPI_File handles still allocated at MPI_FINALIZE", (unsigned long)num_unnamed);
     }
     OBJ_DESTRUCT(&ompi_file_f_to_c_table);
-  
+
     /* All done */
 
     return OMPI_SUCCESS;
@@ -230,7 +232,7 @@ static void file_constructor(ompi_file_t *file)
 
     /* Initialize the fortran <--> C translation index */
 
-    file->f_f_to_c_index = opal_pointer_array_add(&ompi_file_f_to_c_table, 
+    file->f_f_to_c_index = opal_pointer_array_add(&ompi_file_f_to_c_table,
                                                   file);
 
     /* Initialize the error handler.  Per MPI-2:9.7 (p265), the
@@ -250,7 +252,7 @@ static void file_constructor(ompi_file_t *file)
     /* Initialize the module */
 
     file->f_io_version = MCA_IO_BASE_V_NONE;
-    memset(&(file->f_io_selected_module), 0, 
+    memset(&(file->f_io_selected_module), 0,
            sizeof(file->f_io_selected_module));
     file->f_io_selected_data = NULL;
 
@@ -278,7 +280,7 @@ static void file_destructor(ompi_file_t *file)
         /* Should never get here */
         break;
     }
-    
+
     /* Finalize the data members */
 
     if (NULL != file->f_comm) {
