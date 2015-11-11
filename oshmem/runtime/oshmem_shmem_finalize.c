@@ -1,7 +1,8 @@
 /*
  * Copyright (c) 2013      Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -70,7 +71,7 @@ int oshmem_shmem_finalize(void)
 
         if ((OSHMEM_SUCCESS == ret) && ompi_mpi_initialized
                 && !ompi_mpi_finalized) {
-            MPI_Comm_free(&oshmem_comm_world);
+            PMPI_Comm_free(&oshmem_comm_world);
             ret = ompi_mpi_finalize();
         }
 
@@ -145,6 +146,11 @@ static int _shmem_finalize(void)
 
     /* free op resources */
     if (OSHMEM_SUCCESS != (ret = oshmem_op_finalize())) {
+        return ret;
+    }
+
+    /* free proc_group resources */
+    if (OSHMEM_SUCCESS != (ret = oshmem_proc_group_finalize())) {
         return ret;
     }
 

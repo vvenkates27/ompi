@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2012-2013 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,12 +19,11 @@
 #include "ompi/request/request.h"
 #include "ompi/message/message.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Mrecv = PMPI_Mrecv
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Mrecv PMPI_Mrecv
 #endif
 
 static const char FUNC_NAME[] = "MPI_Mrecv";
@@ -75,5 +76,5 @@ int MPI_Mrecv(void *buf, int count, MPI_Datatype type,
         opal_memchecker_base_mem_undefined(&status->MPI_ERROR, sizeof(int));
     );
 
-    OMPI_ERRHANDLER_RETURN(rc, (*message)->comm, rc, FUNC_NAME);
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

@@ -124,6 +124,7 @@
 ! Wasn't that simple?  Here's the list of subroutines that are not
 ! prototyped in this file because they fall into case #1 or #2, above.
 !
+! Case #1:
 ! MPI_Cart_create
 ! MPI_Cart_get
 ! MPI_Cart_map
@@ -137,15 +138,20 @@
 ! MPI_File_set_atomicity
 ! MPI_Finalized
 ! MPI_Graph_create
-! MPI_Improbe
 ! MPI_Info_get
 ! MPI_Info_get_valuelen
 ! MPI_Initialized
 ! MPI_Intercomm_merge
-! MPI_Iprobe
 ! MPI_Is_thread_main
 ! MPI_Op_commutative
 ! MPI_Op_create
+! MPI_Type_get_attr
+! MPI_Win_get_attr
+! MPI_Win_test
+!
+! Case #2:
+! MPI_Iprobe
+! MPI_Improbe
 ! MPI_Request_get_status
 ! MPI_Status_set_cancelled
 ! MPI_Test
@@ -153,9 +159,6 @@
 ! MPI_Testany
 ! MPI_Testsome
 ! MPI_Test_cancelled
-! MPI_Type_get_attr
-! MPI_Win_get_attr
-! MPI_Win_test
 !
 
 interface
@@ -1368,7 +1371,7 @@ subroutine ompi_comm_set_attr_f(comm,comm_keyval,attribute_val,ierror) &
 end subroutine ompi_comm_set_attr_f
 
 subroutine ompi_comm_set_info_f(comm,info,ierror) &
-   BIND(C, name="ompi_comm_get_info_f")
+   BIND(C, name="ompi_comm_set_info_f")
    implicit none
    INTEGER, INTENT(IN) :: comm
    INTEGER, INTENT(IN) :: info
@@ -2750,6 +2753,30 @@ subroutine ompi_file_iread_at_f(fh,offset,buf,count,datatype,request,ierror) &
    INTEGER, INTENT(OUT) :: ierror
 end subroutine ompi_file_iread_at_f
 
+subroutine ompi_file_iread_all_f(fh,buf,count,datatype,request,ierror) &
+   BIND(C, name="ompi_file_iread_all_f")
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_file_iread_all_f
+
+subroutine ompi_file_iread_at_all_f(fh,offset,buf,count,datatype,request,ierror) &
+   BIND(C, name="ompi_file_iread_at_all_f")
+   use :: mpi_f08_types, only : MPI_OFFSET_KIND
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   INTEGER(MPI_OFFSET_KIND), INTENT(IN) :: offset
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_file_iread_at_all_f
+
 subroutine ompi_file_iread_shared_f(fh,buf,count,datatype,request,ierror) &
    BIND(C, name="ompi_file_iread_shared_f")
    implicit none
@@ -2784,6 +2811,30 @@ subroutine ompi_file_iwrite_at_f(fh,offset,buf,count,datatype,request,ierror) &
    INTEGER, INTENT(OUT) :: request
    INTEGER, INTENT(OUT) :: ierror
 end subroutine ompi_file_iwrite_at_f
+
+subroutine ompi_file_iwrite_all_f(fh,buf,count,datatype,request,ierror) &
+   BIND(C, name="ompi_file_iwrite_all_f")
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_file_iwrite_all_f
+
+subroutine ompi_file_iwrite_at_all_f(fh,offset,buf,count,datatype,request,ierror) &
+   BIND(C, name="ompi_file_iwrite_at_all_f")
+   use :: mpi_f08_types, only : MPI_OFFSET_KIND
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   INTEGER(MPI_OFFSET_KIND), INTENT(IN) :: offset
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine ompi_file_iwrite_at_all_f
 
 subroutine ompi_file_iwrite_shared_f(fh,buf,count,datatype,request,ierror) &
    BIND(C, name="ompi_file_iwrite_shared_f")

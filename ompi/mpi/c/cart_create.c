@@ -14,6 +14,8 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2012-2013 Inria.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/mca/topo/base/base.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Cart_create = PMPI_Cart_create
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Cart_create PMPI_Cart_create
 #endif
 
 static const char FUNC_NAME[] = "MPI_Cart_create";
@@ -100,9 +101,8 @@ int MPI_Cart_create(MPI_Comm old_comm, int ndims, const int dims[],
     }
 
     /* Now let that topology module rearrange procs/ranks if it wants to */
-    /* XXX -- CONST -- do not cast away const -- update mca/topo */
     err = topo->topo.cart.cart_create(topo, old_comm,
-                                      ndims, (int *) dims, (int *) periods,
+                                      ndims, dims, periods,
                                       (0 == reorder) ? false : true, comm_cart);
     OPAL_CR_EXIT_LIBRARY();
 

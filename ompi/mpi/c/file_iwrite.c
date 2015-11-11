@@ -13,6 +13,8 @@
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,12 +33,11 @@
 #include "ompi/mca/io/base/io_base_request.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_File_iwrite = PMPI_File_iwrite
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_File_iwrite PMPI_File_iwrite
 #endif
 
 static const char FUNC_NAME[] = "MPI_File_iwrite";
@@ -73,9 +74,8 @@ int MPI_File_iwrite(MPI_File fh, const void *buf, int count, MPI_Datatype
     /* Call the back-end io component function */
     switch (fh->f_io_version) {
     case MCA_IO_BASE_V_2_0_0:
-        /* XXX -- CONST -- do not cast away const -- update mca/io */
         rc = fh->f_io_selected_module.v2_0_0.
-          io_module_file_iwrite(fh, (void *) buf, count, datatype, request);
+          io_module_file_iwrite(fh, buf, count, datatype, request);
         break;
 
     default:

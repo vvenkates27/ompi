@@ -14,6 +14,8 @@
  * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,12 +33,11 @@
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Allgatherv = PMPI_Allgatherv
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Allgatherv PMPI_Allgatherv
 #endif
 
 static const char FUNC_NAME[] = "MPI_Allgatherv";
@@ -86,7 +87,8 @@ int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
         if (ompi_comm_invalid(comm)) {
             return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_COMM,
                                           FUNC_NAME);
-        } else if (MPI_IN_PLACE == recvbuf) {
+        } else if ((MPI_IN_PLACE == sendbuf && OMPI_COMM_IS_INTER(comm)) ||
+                   MPI_IN_PLACE == recvbuf) {
             return OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_ARG, FUNC_NAME);
         } else if (MPI_DATATYPE_NULL == recvtype) {
             return OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_TYPE, FUNC_NAME);
@@ -138,8 +140,7 @@ int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     OPAL_CR_ENTER_LIBRARY();
 
     /* Invoke the coll component to perform the back-end operation */
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_allgatherv((void *) sendbuf, sendcount, sendtype,
+    err = comm->c_coll.coll_allgatherv(sendbuf, sendcount, sendtype,
                                        recvbuf, (int *) recvcounts,
                                        (int *) displs, recvtype, comm,
                                        comm->c_coll.coll_allgatherv_module);

@@ -31,8 +31,8 @@
 #include <sys/time.h>
 #endif
 
-#include "opal/mca/dstore/dstore.h"
 #include "opal/mca/hwloc/hwloc.h"
+#include "opal/mca/pmix/pmix.h"
 #include "opal/util/argv.h"
 #include "opal/util/output.h"
 #include "opal/class/opal_hash_table.h"
@@ -155,6 +155,7 @@ bool orte_default_hostfile_given = false;
 char *orte_rankfile = NULL;
 int orte_num_allocated_nodes = 0;
 char *orte_node_regex = NULL;
+char *orte_default_dash_host = NULL;
 
 /* tool communication controls */
 bool orte_report_events = false;
@@ -465,9 +466,14 @@ orte_vpid_t orte_get_proc_daemon_vpid(orte_process_name_t *proc)
 char* orte_get_proc_hostname(orte_process_name_t *proc)
 {
     orte_proc_t *proct;
-    char *hostname;
-    opal_list_t myvals;
-    opal_value_t *kv;
+    char *hostname = NULL;
+    int rc;
+
+    /* if we are a tool, then we have no way of obtaining
+     * this info */
+    if (ORTE_PROC_IS_TOOL) {
+        return NULL;
+    }
 
     /* don't bother error logging any not-found situations
      * as the layer above us will have something to say
@@ -484,18 +490,10 @@ char* orte_get_proc_hostname(orte_process_name_t *proc)
     }
 
     /* if we are an app, get the data from the modex db */
-    OBJ_CONSTRUCT(&myvals, opal_list_t);
-    if (ORTE_SUCCESS != opal_dstore.fetch(opal_dstore_internal, proc,
-                                          OPAL_DSTORE_HOSTNAME,
-                                          &myvals)) {
-        OPAL_LIST_DESTRUCT(&myvals);
-        return NULL;
-    }
-    kv = (opal_value_t*)opal_list_get_first(&myvals);
-    hostname = kv->data.string;
-    /* protect the data */
-    kv->data.string = NULL;
-    OPAL_LIST_DESTRUCT(&myvals);
+    OPAL_MODEX_RECV_VALUE(rc, OPAL_PMIX_HOSTNAME,
+                          (opal_process_name_t*)proc,
+                          &hostname, OPAL_STRING);
+
     /* user is responsible for releasing the data */
     return hostname;
 }
@@ -503,10 +501,8 @@ char* orte_get_proc_hostname(orte_process_name_t *proc)
 orte_node_rank_t orte_get_proc_node_rank(orte_process_name_t *proc)
 {
     orte_proc_t *proct;
-    orte_node_rank_t noderank;
+    orte_node_rank_t *noderank, nd;
     int rc;
-    opal_list_t myvals;
-    opal_value_t *kv;
 
     if (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP) {
         /* look it up on our arrays */
@@ -518,18 +514,14 @@ orte_node_rank_t orte_get_proc_node_rank(orte_process_name_t *proc)
     }
 
     /* if we are an app, get the value from the modex db */
-    OBJ_CONSTRUCT(&myvals, opal_list_t);
-    if (ORTE_SUCCESS != (rc = opal_dstore.fetch(opal_dstore_internal, proc,
-                                                OPAL_DSTORE_NODERANK,
-                                                &myvals))) {
-        ORTE_ERROR_LOG(rc);
-        OPAL_LIST_DESTRUCT(&myvals);
-        return ORTE_NODE_RANK_INVALID;
+    noderank = &nd;
+    OPAL_MODEX_RECV_VALUE(rc, OPAL_PMIX_NODE_RANK,
+                          (opal_process_name_t*)proc,
+                          &noderank, ORTE_NODE_RANK);
+    if (OPAL_SUCCESS != rc) {
+        nd = ORTE_NODE_RANK_INVALID;
     }
-    kv = (opal_value_t*)opal_list_get_first(&myvals);
-    noderank = kv->data.uint16;
-    OPAL_LIST_DESTRUCT(&myvals);
-    return noderank;
+    return nd;
 }
 
 orte_vpid_t orte_get_lowest_vpid_alive(orte_jobid_t job)
@@ -771,10 +763,7 @@ static void orte_node_construct(orte_node_t* node)
     node->slots = 0;
     node->slots_inuse = 0;
     node->slots_max = 0;
-
-#if OPAL_HAVE_HWLOC
     node->topology = NULL;
-#endif
 
     node->flags = 0;
     OBJ_CONSTRUCT(&node->attributes, opal_list_t);
@@ -861,9 +850,7 @@ static void orte_job_map_construct(orte_job_map_t* map)
     map->last_mapper = NULL;
     map->mapping = 0;
     map->ranking = 0;
-#if OPAL_HAVE_HWLOC
     map->binding = 0;
-#endif
     map->ppr = NULL;
     map->cpus_per_rank = 1;
     map->display_map = false;
@@ -927,7 +914,6 @@ OBJ_CLASS_INSTANCE(orte_attribute_t,
                    opal_list_item_t,
                    orte_attr_cons, orte_attr_des);
 
-#if OPAL_HAVE_HWLOC
 static void tcon(orte_topology_t *t)
 {
     t->topo = NULL;
@@ -945,4 +931,3 @@ static void tdes(orte_topology_t *t)
 OBJ_CLASS_INSTANCE(orte_topology_t,
                    opal_object_t,
                    tcon, tdes);
-#endif

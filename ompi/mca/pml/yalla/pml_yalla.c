@@ -1,5 +1,7 @@
 /*
  * Copyright (C) Mellanox Technologies Ltd. 2001-2011.  ALL RIGHTS RESERVED.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,7 +70,7 @@ static int send_ep_address(void)
         return OMPI_ERROR;
     }
 
-    OPAL_MODEX_SEND(rc, PMIX_SYNC_REQD, PMIX_GLOBAL,
+    OPAL_MODEX_SEND(rc, OPAL_PMIX_GLOBAL,
                     &mca_pml_yalla_component.pmlm_version, address, addrlen);
     if (OMPI_SUCCESS != rc) {
         PML_YALLA_ERROR("Open MPI couldn't distribute EP connection details");
@@ -82,7 +84,7 @@ static int recv_ep_address(ompi_proc_t *proc, void **address_p, size_t *addrlen_
 {
     int rc;
 
-    OPAL_MODEX_RECV(rc, &mca_pml_yalla_component.pmlm_version, &proc->super,
+    OPAL_MODEX_RECV(rc, &mca_pml_yalla_component.pmlm_version, &proc->super.proc_name,
                     address_p, addrlen_p);
     if (rc < 0) {
         PML_YALLA_ERROR("Failed to receive EP address");
@@ -109,13 +111,13 @@ int mca_pml_yalla_open(void)
          opal_mem_hooks_support_level()))
     {
         PML_YALLA_VERBOSE(1, "enabling on-demand memory mapping");
-        opal_setenv("MXM_PML_MEM_ON_DEMAND_MAP", "y", false, &environ);
+        opal_setenv("MXM_MPI_MEM_ON_DEMAND_MAP", "y", false, &environ);
         ompi_pml_yalla.using_mem_hooks = 1;
     } else {
         PML_YALLA_VERBOSE(1, "disabling on-demand memory mapping");
         ompi_pml_yalla.using_mem_hooks = 0;
     }
-    opal_setenv("MXM_PML_SINGLE_THREAD", ompi_mpi_thread_multiple ? "n" : "y",
+    opal_setenv("MXM_MPI_SINGLE_THREAD", ompi_mpi_thread_multiple ? "n" : "y",
                 false, &environ);
 
     /* Read options */
@@ -381,7 +383,7 @@ int mca_pml_yalla_recv(void *buf, size_t count, ompi_datatype_t *datatype, int s
     return OMPI_SUCCESS;
 }
 
-int mca_pml_yalla_isend_init(void *buf, size_t count, ompi_datatype_t *datatype,
+int mca_pml_yalla_isend_init(const void *buf, size_t count, ompi_datatype_t *datatype,
                              int dst, int tag, mca_pml_base_send_mode_t mode,
                              struct ompi_communicator_t* comm,
                              struct ompi_request_t **request)
@@ -448,7 +450,7 @@ static int mca_pml_yalla_bsend(mxm_send_req_t *mxm_sreq)
     return OMPI_SUCCESS;
 }
 
-int mca_pml_yalla_isend(void *buf, size_t count, ompi_datatype_t *datatype,
+int mca_pml_yalla_isend(const void *buf, size_t count, ompi_datatype_t *datatype,
                         int dst, int tag, mca_pml_base_send_mode_t mode,
                         struct ompi_communicator_t* comm,
                         struct ompi_request_t **request)
@@ -484,7 +486,7 @@ int mca_pml_yalla_isend(void *buf, size_t count, ompi_datatype_t *datatype,
     return OMPI_SUCCESS;
 }
 
-int mca_pml_yalla_send(void *buf, size_t count, ompi_datatype_t *datatype, int dst,
+int mca_pml_yalla_send(const void *buf, size_t count, ompi_datatype_t *datatype, int dst,
                        int tag, mca_pml_base_send_mode_t mode,
                        struct ompi_communicator_t* comm)
 {

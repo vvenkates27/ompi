@@ -103,15 +103,23 @@ AC_DEFUN([OMPI_SETUP_MPI_FORTRAN],[
     AC_DEFINE_UNQUOTED([OMPI_FORTRAN_DOUBLE_UNDERSCORE],
         [$ompi_fortran_double_underscore],
         [Whether fortran symbols have a trailing double underscore or not])
+    OMPI_FORTRAN_DOUBLE_UNDERSCORE=$ompi_fortran_double_underscore
+    AC_SUBST(OMPI_FORTRAN_DOUBLE_UNDERSCORE)
     AC_DEFINE_UNQUOTED([OMPI_FORTRAN_SINGLE_UNDERSCORE],
         [$ompi_fortran_single_underscore],
         [Whether fortran symbols have a trailing underscore or not])
+    OMPI_FORTRAN_SINGLE_UNDERSCORE=$ompi_fortran_single_underscore
+    AC_SUBST(OMPI_FORTRAN_SINGLE_UNDERSCORE)
     AC_DEFINE_UNQUOTED([OMPI_FORTRAN_CAPS],
         [$ompi_fortran_caps],
         [Whether fortran symbols are all caps or not])
+    OMPI_FORTRAN_CAPS=$ompi_fortran_caps
+    AC_SUBST(OMPI_FORTRAN_CAPS)
     AC_DEFINE_UNQUOTED([OMPI_FORTRAN_PLAIN],
         [$ompi_fortran_plain],
         [Whether fortran symbols have no trailing underscore or not])
+    OMPI_FORTRAN_PLAIN=$ompi_fortran_plain
+    AC_SUBST(OMPI_FORTRAN_PLAIN)
 
     # Check to see if any of the MPI Fortran bindings were
     # specifically requested.  If so, and we weren't able to setup the
@@ -301,7 +309,8 @@ AC_DEFUN([OMPI_SETUP_MPI_FORTRAN],[
 
     # We need INTERFACE, ISO_FORTRAN_ENV, and STORAGE_SIZE() support
     # to build MPI_SIZEOF support
-    AS_IF([test $OMPI_FORTRAN_HAVE_INTERFACE -eq 1 && \
+    AS_IF([test $ompi_fortran_happy -eq 1 && \
+           test $OMPI_FORTRAN_HAVE_INTERFACE -eq 1 && \
            test $OMPI_FORTRAN_HAVE_ISO_FORTRAN_ENV -eq 1 && \
            test $OMPI_FORTRAN_HAVE_STORAGE_SIZE -eq 1],
           [OMPI_FORTRAN_BUILD_SIZEOF=1],
@@ -358,7 +367,7 @@ AC_DEFUN([OMPI_SETUP_MPI_FORTRAN],[
 
     # We need to have ignore TKR functionality to build the mpi_f08
     # module
-    AS_IF([test $OMPI_TRY_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS &&
+    AS_IF([test $OMPI_TRY_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS && \
            test $OMPI_FORTRAN_HAVE_IGNORE_TKR -eq 1],
           [OMPI_BUILD_FORTRAN_BINDINGS=$OMPI_FORTRAN_USEMPIF08_BINDINGS
            OMPI_FORTRAN_F08_PREDECL=$OMPI_FORTRAN_IGNORE_TKR_PREDECL
@@ -429,6 +438,18 @@ AC_DEFUN([OMPI_SETUP_MPI_FORTRAN],[
                [OMPI_FORTRAN_HAVE_PROCEDURE=0
                 OMPI_BUILD_FORTRAN_BINDINGS=$OMPI_FORTRAN_USEMPI_BINDINGS])])
 
+    # Per https://github.com/open-mpi/ompi/issues/857, if the Fortran
+    # compiler doesn't properly support "USE ... ONLY" notation,
+    # disable the mpi_f08 module.
+    OMPI_FORTRAN_HAVE_USE_ONLY=0
+    AS_IF([test $OMPI_TRY_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS && \
+           test $OMPI_BUILD_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS],
+          [ # Does the compiler support "USE ... ONLY"
+           OMPI_FORTRAN_CHECK_USE_ONLY(
+               [OMPI_FORTRAN_HAVE_USE_ONLY=1],
+               [OMPI_FORTRAN_HAVE_USE_ONLY=0
+                OMPI_BUILD_FORTRAN_BINDINGS=$OMPI_FORTRAN_USEMPI_BINDINGS])])
+
     OMPI_FORTRAN_HAVE_OPTIONAL_ARGS=0
     AS_IF([test $OMPI_TRY_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS && \
            test $OMPI_BUILD_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS],
@@ -481,6 +502,7 @@ AC_DEFUN([OMPI_SETUP_MPI_FORTRAN],[
                [OMPI_FORTRAN_HAVE_ASYNCHRONOUS=0])])
 
     OMPI_FORTRAN_F08_HANDLE_SIZE=4
+    OMPI_FORTRAN_F08_HANDLE_ALIGNMENT=4
     AS_IF([test $OMPI_TRY_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS && \
            test $OMPI_BUILD_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS],
           [ # How big are derived types with a single INTEGER?
@@ -489,6 +511,9 @@ AC_DEFUN([OMPI_SETUP_MPI_FORTRAN],[
 end type test_mpi_handle],
                                    [type(test_mpi_handle)],
                                    [OMPI_FORTRAN_F08_HANDLE_SIZE])
+           OMPI_FORTRAN_F08_GET_HANDLE_ALIGNMENT(
+                                   [type(test_mpi_handle)],
+                                   [OMPI_FORTRAN_F08_HANDLE_ALIGNMENT])
           ])
 
     OMPI_FORTRAN_NEED_WRAPPER_ROUTINES=1
@@ -622,11 +647,10 @@ end type test_mpi_handle],
     # these layers need to be built or NOT
 
     AM_CONDITIONAL(BUILD_MPI_FORTRAN_MPIFH_BINDINGS_LAYER,
-                   [( test $WANT_MPI_PROFILING -eq 0 || test $OMPI_PROFILING_COMPILE_SEPARATELY -eq 1 ) && \
+                   [test $OMPI_PROFILING_COMPILE_SEPARATELY -eq 1 && \
                     test $OMPI_BUILD_FORTRAN_BINDINGS -gt $OMPI_FORTRAN_NO_BINDINGS])
     AM_CONDITIONAL(BUILD_PMPI_FORTRAN_MPIFH_BINDINGS_LAYER,
-                   [test $OMPI_BUILD_FORTRAN_BINDINGS -gt $OMPI_FORTRAN_NO_BINDINGS && \
-                    test $WANT_MPI_PROFILING -eq 1])
+                   [test $OMPI_BUILD_FORTRAN_BINDINGS -gt $OMPI_FORTRAN_NO_BINDINGS])
     AM_CONDITIONAL(OMPI_BUILD_FORTRAN_MPIFH_BINDINGS,
                    [test $OMPI_BUILD_FORTRAN_BINDINGS -gt $OMPI_FORTRAN_NO_BINDINGS])
 
@@ -707,6 +731,10 @@ end type test_mpi_handle],
                        $OMPI_FORTRAN_F08_HANDLE_SIZE,
                        [How many bytes the mpi_f08 TYPE(MPI_<foo>) handles will be])
 
+    AC_DEFINE_UNQUOTED(OMPI_FORTRAN_F08_HANDLE_ALIGNMENT,
+                       $OMPI_FORTRAN_F08_HANDLE_ALIGNMENT,
+                       [How many bytes the mpi_f08 TYPE(MPI_<foo>) handles will be aligned to])
+
     # These go into ompi/info/param.c
     AC_DEFINE_UNQUOTED(OMPI_FORTRAN_HAVE_F08_ASSUMED_RANK,
                        [$OMPI_FORTRAN_HAVE_F08_ASSUMED_RANK],
@@ -763,6 +791,13 @@ end type test_mpi_handle],
     AC_DEFINE_UNQUOTED([OMPI_FORTRAN_HAVE_PROCEDURE],
                        [$OMPI_FORTRAN_HAVE_PROCEDURE],
                        [For ompi/mpi/fortran/use-mpi-f08/blah.F90 and blah.h and ompi_info: whether the compiler supports the "procedure" keyword or not])
+
+    # For configure-fortran-output.h, various files in
+    # ompi/mpi/fortran/use-mpi-f08/*.F90 and *.h files (and ompi_info)
+    AC_SUBST([OMPI_FORTRAN_HAVE_USE_ONLY])
+    AC_DEFINE_UNQUOTED([OMPI_FORTRAN_HAVE_USE_ONLY],
+                       [$OMPI_FORTRAN_HAVE_USE_ONLY],
+                       [For ompi/mpi/fortran/use-mpi-f08/blah.F90 and blah.h and ompi_info: whether the compiler supports "USE ... ONLY" notation properly or not])
 
     # For configure-fortran-output.h, various files in
     # ompi/mpi/fortran/use-mpi-f08/*.F90 and *.h files (and ompi_info)

@@ -62,6 +62,8 @@ mca_spml_yoda_module_t mca_spml_yoda = {
         mca_spml_base_wait,
         mca_spml_base_wait_nb,
         mca_spml_yoda_fence,
+        mca_spml_base_rmkey_unpack,
+        mca_spml_base_rmkey_free,
 
         (void *)&mca_spml_yoda
     }
@@ -452,7 +454,7 @@ sshmem_mkey_t *mca_spml_yoda_register(void* addr,
 
         SPML_VERBOSE(5,
                      "rank %d btl %s va_base: 0x%p len: %d key %llx size %llu",
-                     OSHMEM_PROC_VPID(oshmem_proc_local_proc), btl_type2str(ybtl->btl_type),
+		     oshmem_proc_pe(oshmem_proc_local()), btl_type2str(ybtl->btl_type),
                      mkeys[i].va_base, mkeys[i].len, (unsigned long long)mkeys[i].u.key, (unsigned long long)size);
     }
     *count = mca_spml_yoda.n_btls;
@@ -759,10 +761,7 @@ static inline int mca_spml_yoda_put_internal(void *dst_addr,
     put_via_send = !(bml_btl->btl->btl_flags & MCA_BTL_FLAGS_PUT);
 
     /* Get rkey of remote PE (dst proc) which must be on memheap*/
-    r_mkey = mca_memheap.memheap_get_cached_mkey(dst,
-                                                 dst_addr,
-                                                 btl_id,
-                                                 &rva);
+    r_mkey = mca_memheap_base_get_cached_mkey(dst, dst_addr, btl_id, &rva);
     if (!r_mkey) {
         SPML_ERROR("pe=%d: %p is not address of shared variable",
                    dst, dst_addr);
@@ -1033,10 +1032,7 @@ int mca_spml_yoda_get(void* src_addr, size_t size, void* dst_addr, int src)
                        (bml_btl->btl->btl_flags & (MCA_BTL_FLAGS_PUT)) );
 
     /* Get rkey of remote PE (src proc) which must be on memheap*/
-    r_mkey = mca_memheap.memheap_get_cached_mkey(src,
-                                                 src_addr,
-                                                 btl_id,
-                                                 &rva);
+    r_mkey = mca_memheap_base_get_cached_mkey(src, src_addr, btl_id, &rva);
     if (!r_mkey) {
         SPML_ERROR("pe=%d: %p is not address of shared variable",
                    src, src_addr);

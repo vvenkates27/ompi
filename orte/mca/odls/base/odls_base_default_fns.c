@@ -54,6 +54,7 @@
 #include "opal/mca/hwloc/hwloc.h"
 #include "opal/mca/shmem/base/base.h"
 #include "opal/mca/pstat/pstat.h"
+#include "opal/mca/pmix/pmix.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
@@ -80,6 +81,7 @@
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_wait.h"
 #include "orte/orted/orted.h"
+#include "orte/orted/pmix/pmix_server.h"
 
 #if OPAL_ENABLE_FT_CR == 1
 #include "orte/mca/snapc/snapc.h"
@@ -484,6 +486,13 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
     }
 
  COMPLETE:
+    /* register this job with the PMIx server - need to wait until after we
+     * have computed the #local_procs before calling the function */
+    if (ORTE_SUCCESS != (rc = orte_pmix_server_register_nspace(jdata))) {
+        ORTE_ERROR_LOG(rc);
+        goto REPORT_ERROR;
+    }
+
     return ORTE_SUCCESS;
 
  REPORT_ERROR:
@@ -847,6 +856,14 @@ void orte_odls_base_default_launch_local(int fd, short sd, void *cbdata)
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(&child->name)));
 
+            /* setup the pmix environment */
+            if (OPAL_SUCCESS != (rc = opal_pmix.server_setup_fork(&child->name, &app->env))) {
+                ORTE_ERROR_LOG(rc);
+                continue;
+            }
+            /* tell the child that it is being launched via ORTE */
+            opal_setenv(OPAL_MCA_PREFIX"orte_launch", "1", true, &app->env);
+
             /* ensure we clear any prior info regarding state or exit status in
              * case this is a restart
              */
@@ -1008,7 +1025,7 @@ void orte_odls_base_default_launch_local(int fd, short sd, void *cbdata)
             }
 
             if (5 < opal_output_get_verbosity(orte_odls_base_framework.framework_output)) {
-                opal_output(orte_odls_base_framework.framework_output, "%s odls:launch: spawning child %s",
+                opal_output(orte_odls_base_framework.framework_output, "%s odls:launch spawning child %s",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                             ORTE_NAME_PRINT(&child->name));
 
@@ -1018,12 +1035,11 @@ void orte_odls_base_default_launch_local(int fd, short sd, void *cbdata)
                 }
             }
 
-            orte_wait_cb(child, odls_base_default_wait_local_proc, NULL);
             if (ORTE_SUCCESS != (rc = fork_local(app, child, app->env, jobdat))) {
-                orte_wait_cb_cancel(child);
                 child->exit_code = ORTE_ERR_SILENT; /* error message already output */
                 ORTE_ACTIVATE_PROC_STATE(&child->name, ORTE_PROC_STATE_FAILED_TO_START);
             }
+            orte_wait_cb(child, odls_base_default_wait_local_proc, NULL);
             /* if we indexed the argv, we need to restore it to
              * its original form
              */

@@ -8,7 +8,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2014 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Sandia National Laboratories.  All rights reserved.
@@ -21,12 +21,6 @@
  * $HEADER$
  */
 
-#include "ompi_config.h"
-#include "mpi.h"
-
-#include <stdio.h>
-#include <string.h>
-
 #include "osc_pt2pt.h"
 #include "osc_pt2pt_request.h"
 #include "osc_pt2pt_header.h"
@@ -35,9 +29,9 @@
 
 #include "opal_stdint.h"
 #include "ompi/memchecker.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/osc/base/osc_base_obj_convert.h"
-#include "ompi/mca/osc/base/base.h"
+
+#include <stdio.h>
 
 /* progress an OSC request */
 static int ompi_osc_pt2pt_req_comm_complete (ompi_request_t *request)
@@ -69,9 +63,9 @@ static int ompi_osc_pt2pt_dt_send_complete (ompi_request_t *request)
     OBJ_RELEASE(datatype);
 
     OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.lock);
-    opal_hash_table_get_value_uint32(&mca_osc_pt2pt_component.modules,
-                                     ompi_comm_get_cid(request->req_mpi_object.comm),
-                                     (void **) &module);
+    (void) opal_hash_table_get_value_uint32(&mca_osc_pt2pt_component.modules,
+                                            ompi_comm_get_cid(request->req_mpi_object.comm),
+                                            (void **) &module);
     OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.lock);
     assert (NULL != module);
 
@@ -82,28 +76,19 @@ static int ompi_osc_pt2pt_dt_send_complete (ompi_request_t *request)
 }
 
 /* self communication optimizations */
-static inline int ompi_osc_pt2pt_put_self (void *source, int source_count, ompi_datatype_t *source_datatype,
-                                          OPAL_PTRDIFF_TYPE target_disp, int target_count, ompi_datatype_t *target_datatype,
-                                          ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_request_t *request)
+static inline int ompi_osc_pt2pt_put_self (ompi_osc_pt2pt_sync_t *pt2pt_sync, const void *source, int source_count,
+                                           ompi_datatype_t *source_datatype, OPAL_PTRDIFF_TYPE target_disp, int target_count,
+                                           ompi_datatype_t *target_datatype, ompi_osc_pt2pt_module_t *module,
+                                           ompi_osc_pt2pt_request_t *request)
 {
     void *target = (unsigned char*) module->baseptr +
         ((unsigned long) target_disp * module->disp_unit);
     int ret;
 
     /* if we are in active target mode wait until all post messages arrive */
-    if (module->sc_group && !module->active_eager_send_active) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
-    }
+    ompi_osc_pt2pt_sync_wait (pt2pt_sync);
 
-    if (!(module->passive_target_access_epoch || module->active_eager_send_active)) {
-        return OMPI_ERR_RMA_SYNC;
-    }
-
-    ret = ompi_datatype_sndrcv (source, source_count, source_datatype,
+    ret = ompi_datatype_sndrcv ((void *)source, source_count, source_datatype,
                                 target, target_count, target_datatype);
     if (OPAL_UNLIKELY(OMPI_SUCCESS != ret)) {
         return ret;
@@ -116,26 +101,16 @@ static inline int ompi_osc_pt2pt_put_self (void *source, int source_count, ompi_
     return OMPI_SUCCESS;
 }
 
-static inline int ompi_osc_pt2pt_get_self (void *target, int target_count, ompi_datatype_t *target_datatype,
-                                          OPAL_PTRDIFF_TYPE source_disp, int source_count, ompi_datatype_t *source_datatype,
-                                          ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_request_t *request)
+static inline int ompi_osc_pt2pt_get_self (ompi_osc_pt2pt_sync_t *pt2pt_sync, void *target, int target_count, ompi_datatype_t *target_datatype,
+                                           OPAL_PTRDIFF_TYPE source_disp, int source_count, ompi_datatype_t *source_datatype,
+                                           ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_request_t *request)
 {
     void *source = (unsigned char*) module->baseptr +
         ((unsigned long) source_disp * module->disp_unit);
     int ret;
 
     /* if we are in active target mode wait until all post messages arrive */
-    if (module->sc_group && !module->active_eager_send_active) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
-    }
-
-    if (!(module->passive_target_access_epoch || module->active_eager_send_active)) {
-        return OMPI_ERR_RMA_SYNC;
-    }
+    ompi_osc_pt2pt_sync_wait (pt2pt_sync);
 
     ret = ompi_datatype_sndrcv (source, source_count, source_datatype,
                                 target, target_count, target_datatype);
@@ -150,24 +125,14 @@ static inline int ompi_osc_pt2pt_get_self (void *target, int target_count, ompi_
     return OMPI_SUCCESS;
 }
 
-static inline int ompi_osc_pt2pt_cas_self (void *source, void *compare, void *result, ompi_datatype_t *datatype,
-                                          OPAL_PTRDIFF_TYPE target_disp, ompi_osc_pt2pt_module_t *module)
+static inline int ompi_osc_pt2pt_cas_self (ompi_osc_pt2pt_sync_t *pt2pt_sync, const void *source, const void *compare, void *result,
+                                           ompi_datatype_t *datatype, OPAL_PTRDIFF_TYPE target_disp, ompi_osc_pt2pt_module_t *module)
 {
     void *target = (unsigned char*) module->baseptr +
         ((unsigned long) target_disp * module->disp_unit);
 
     /* if we are in active target mode wait until all post messages arrive */
-    if (module->sc_group && !module->active_eager_send_active) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
-    }
-
-    if (!(module->passive_target_access_epoch || module->active_eager_send_active)) {
-        return OMPI_ERR_RMA_SYNC;
-    }
+    ompi_osc_pt2pt_sync_wait (pt2pt_sync);
 
     ompi_osc_pt2pt_accumulate_lock (module);
 
@@ -182,33 +147,23 @@ static inline int ompi_osc_pt2pt_cas_self (void *source, void *compare, void *re
     return OMPI_SUCCESS;
 }
 
-static inline int ompi_osc_pt2pt_acc_self (void *source, int source_count, ompi_datatype_t *source_datatype,
-                                          OPAL_PTRDIFF_TYPE target_disp, int target_count, ompi_datatype_t *target_datatype,
-                                          ompi_op_t *op, ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_request_t *request)
+static inline int ompi_osc_pt2pt_acc_self (ompi_osc_pt2pt_sync_t *pt2pt_sync, const void *source, int source_count, ompi_datatype_t *source_datatype,
+                                           OPAL_PTRDIFF_TYPE target_disp, int target_count, ompi_datatype_t *target_datatype,
+                                           ompi_op_t *op, ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_request_t *request)
 {
     void *target = (unsigned char*) module->baseptr +
         ((unsigned long) target_disp * module->disp_unit);
     int ret;
 
     /* if we are in active target mode wait until all post messages arrive */
-    if (module->sc_group && !module->active_eager_send_active) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
-    }
-
-    if (!(module->passive_target_access_epoch || module->active_eager_send_active)) {
-        return OMPI_ERR_RMA_SYNC;
-    }
+    ompi_osc_pt2pt_sync_wait (pt2pt_sync);
 
     ompi_osc_pt2pt_accumulate_lock (module);
 
     if (&ompi_mpi_op_replace.op != op) {
         ret = ompi_osc_base_sndrcv_op (source, source_count, source_datatype, target, target_count, target_datatype, op);
     } else {
-        ret = ompi_datatype_sndrcv (source, source_count, source_datatype, target, target_count, target_datatype);
+        ret = ompi_datatype_sndrcv ((void *)source, source_count, source_datatype, target, target_count, target_datatype);
     }
 
     ompi_osc_pt2pt_accumulate_unlock (module);
@@ -226,27 +181,17 @@ static inline int ompi_osc_pt2pt_acc_self (void *source, int source_count, ompi_
     return OMPI_SUCCESS;
 }
 
-static inline int ompi_osc_pt2pt_gacc_self (void *source, int source_count, ompi_datatype_t *source_datatype,
-                                           void *result, int result_count, ompi_datatype_t *result_datatype,
-                                           OPAL_PTRDIFF_TYPE target_disp, int target_count, ompi_datatype_t *target_datatype,
-                                           ompi_op_t *op, ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_request_t *request)
+static inline int ompi_osc_pt2pt_gacc_self (ompi_osc_pt2pt_sync_t *pt2pt_sync, const void *source, int source_count, ompi_datatype_t *source_datatype,
+                                            void *result, int result_count, ompi_datatype_t *result_datatype,
+                                            OPAL_PTRDIFF_TYPE target_disp, int target_count, ompi_datatype_t *target_datatype,
+                                            ompi_op_t *op, ompi_osc_pt2pt_module_t *module, ompi_osc_pt2pt_request_t *request)
 {
     void *target = (unsigned char*) module->baseptr +
         ((unsigned long) target_disp * module->disp_unit);
     int ret;
 
     /* if we are in active target mode wait until all post messages arrive */
-    if (module->sc_group && !module->active_eager_send_active) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
-    }
-
-    if (!(module->passive_target_access_epoch || module->active_eager_send_active)) {
-        return OMPI_ERR_RMA_SYNC;
-    }
+    ompi_osc_pt2pt_sync_wait (pt2pt_sync);
 
     ompi_osc_pt2pt_accumulate_lock (module);
 
@@ -264,7 +209,7 @@ static inline int ompi_osc_pt2pt_gacc_self (void *source, int source_count, ompi
             if (&ompi_mpi_op_replace.op != op) {
                 ret = ompi_osc_base_sndrcv_op (source, source_count, source_datatype, target, target_count, target_datatype, op);
             } else {
-                ret = ompi_datatype_sndrcv (source, source_count, source_datatype, target, target_count, target_datatype);
+                ret = ompi_datatype_sndrcv ((void *)source, source_count, source_datatype, target, target_count, target_datatype);
             }
         }
 
@@ -286,7 +231,7 @@ static inline int ompi_osc_pt2pt_gacc_self (void *source, int source_count, ompi
 }
 /* end: self communication optimizations */
 
-static inline int ompi_osc_pt2pt_put_w_req (void *origin_addr, int origin_count,
+static inline int ompi_osc_pt2pt_put_w_req (const void *origin_addr, int origin_count,
                                            struct ompi_datatype_t *origin_dt,
                                            int target, OPAL_PTRDIFF_TYPE target_disp,
                                            int target_count, struct ompi_datatype_t *target_dt,
@@ -296,6 +241,7 @@ static inline int ompi_osc_pt2pt_put_w_req (void *origin_addr, int origin_count,
     ompi_proc_t *proc = ompi_comm_peer_lookup(module->comm, target);
     ompi_osc_pt2pt_frag_t *frag;
     ompi_osc_pt2pt_header_put_t *header;
+    ompi_osc_pt2pt_sync_t *pt2pt_sync;
     size_t ddt_len, payload_len, frag_len;
     bool is_long_datatype = false;
     bool is_long_msg = false;
@@ -309,7 +255,8 @@ static inline int ompi_osc_pt2pt_put_w_req (void *origin_addr, int origin_count,
                          origin_dt->name, target, (int) target_disp,
                          target_count, target_dt->name, win->w_name));
 
-    if (!ompi_osc_pt2pt_check_access_epoch (module, target)) {
+    pt2pt_sync = ompi_osc_pt2pt_module_sync_lookup (module, target, NULL);
+    if (OPAL_UNLIKELY(NULL == pt2pt_sync)) {
         return OMPI_ERR_RMA_SYNC;
     }
 
@@ -324,9 +271,9 @@ static inline int ompi_osc_pt2pt_put_w_req (void *origin_addr, int origin_count,
 
     /* optimize self communication. TODO: optimize local communication */
     if (ompi_comm_rank (module->comm) == target) {
-        return ompi_osc_pt2pt_put_self (origin_addr, origin_count, origin_dt,
-                                       target_disp, target_count, target_dt,
-                                       module, request);
+        return ompi_osc_pt2pt_put_self (pt2pt_sync, origin_addr, origin_count, origin_dt,
+                                        target_disp, target_count, target_dt,
+                                        module, request);
     }
 
     /* Compute datatype and payload lengths.  Note that the datatype description
@@ -354,16 +301,10 @@ static inline int ompi_osc_pt2pt_put_w_req (void *origin_addr, int origin_count,
         tag = get_tag(module);
     }
 
-    /* flush will be called at the end of this function. make sure the post message has
+    /* flush will be called at the end of this function. make sure all post messages have
      * arrived. */
-    if ((is_long_msg || request) && module->sc_group) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_framework.framework_output,
-                                 "waiting for post messages. num_post_msgs = %d", module->num_post_msgs));
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
+    if ((is_long_msg || request) && OMPI_OSC_PT2PT_SYNC_TYPE_PSCW == pt2pt_sync->type) {
+        ompi_osc_pt2pt_sync_wait (pt2pt_sync);
     }
 
     OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_framework.framework_output,
@@ -450,7 +391,7 @@ static inline int ompi_osc_pt2pt_put_w_req (void *origin_addr, int origin_count,
 }
 
 int
-ompi_osc_pt2pt_put(void *origin_addr, int origin_count,
+ompi_osc_pt2pt_put(const void *origin_addr, int origin_count,
                   struct ompi_datatype_t *origin_dt,
                   int target, OPAL_PTRDIFF_TYPE target_disp,
                   int target_count,
@@ -463,7 +404,7 @@ ompi_osc_pt2pt_put(void *origin_addr, int origin_count,
 
 
 static int
-ompi_osc_pt2pt_accumulate_w_req (void *origin_addr, int origin_count,
+ompi_osc_pt2pt_accumulate_w_req (const void *origin_addr, int origin_count,
                                 struct ompi_datatype_t *origin_dt,
                                 int target, OPAL_PTRDIFF_TYPE target_disp,
                                 int target_count,
@@ -478,6 +419,7 @@ ompi_osc_pt2pt_accumulate_w_req (void *origin_addr, int origin_count,
     bool is_long_msg = false;
     ompi_osc_pt2pt_frag_t *frag;
     ompi_osc_pt2pt_header_acc_t *header;
+    ompi_osc_pt2pt_sync_t *pt2pt_sync;
     size_t ddt_len, payload_len, frag_len;
     char *ptr;
     const void *packed_ddt;
@@ -490,7 +432,8 @@ ompi_osc_pt2pt_accumulate_w_req (void *origin_addr, int origin_count,
                          target_count, target_dt->name, op->o_name,
                          win->w_name));
 
-    if (!ompi_osc_pt2pt_check_access_epoch (module, target)) {
+    pt2pt_sync = ompi_osc_pt2pt_module_sync_lookup (module, target, NULL);
+    if (OPAL_UNLIKELY(NULL == pt2pt_sync)) {
         return OMPI_ERR_RMA_SYNC;
     }
 
@@ -505,9 +448,9 @@ ompi_osc_pt2pt_accumulate_w_req (void *origin_addr, int origin_count,
 
     /* optimize the self case. TODO: optimize the local case */
     if (ompi_comm_rank (module->comm) == target) {
-        return ompi_osc_pt2pt_acc_self (origin_addr, origin_count, origin_dt,
-                                       target_disp, target_count, target_dt,
-                                       op, module, request);
+        return ompi_osc_pt2pt_acc_self (pt2pt_sync, origin_addr, origin_count, origin_dt,
+                                        target_disp, target_count, target_dt,
+                                        op, module, request);
     }
 
     /* Compute datatype and payload lengths.  Note that the datatype description
@@ -535,16 +478,10 @@ ompi_osc_pt2pt_accumulate_w_req (void *origin_addr, int origin_count,
         tag = get_tag (module);
     }
 
-    /* flush will be called at the end of this function. make sure the post message has
+    /* flush will be called at the end of this function. make sure all post messages have
      * arrived. */
-    if ((is_long_msg || request) && module->sc_group) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_framework.framework_output,
-                                 "waiting for post messages. num_post_msgs = %d", module->num_post_msgs));
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
+    if ((is_long_msg || request) && OMPI_OSC_PT2PT_SYNC_TYPE_PSCW == pt2pt_sync->type) {
+        ompi_osc_pt2pt_sync_wait (pt2pt_sync);
     }
 
     header = (ompi_osc_pt2pt_header_acc_t*) ptr;
@@ -635,7 +572,7 @@ ompi_osc_pt2pt_accumulate_w_req (void *origin_addr, int origin_count,
 }
 
 int
-ompi_osc_pt2pt_accumulate(void *origin_addr, int origin_count,
+ompi_osc_pt2pt_accumulate(const void *origin_addr, int origin_count,
                          struct ompi_datatype_t *origin_dt,
                          int target, OPAL_PTRDIFF_TYPE target_disp,
                          int target_count,
@@ -647,7 +584,7 @@ ompi_osc_pt2pt_accumulate(void *origin_addr, int origin_count,
                                            target_dt, op, win, NULL);
 }
 
-int ompi_osc_pt2pt_compare_and_swap (void *origin_addr, void *compare_addr,
+int ompi_osc_pt2pt_compare_and_swap (const void *origin_addr, const void *compare_addr,
                                     void *result_addr, struct ompi_datatype_t *dt,
                                     int target, OPAL_PTRDIFF_TYPE target_disp,
                                     struct ompi_win_t *win)
@@ -656,6 +593,7 @@ int ompi_osc_pt2pt_compare_and_swap (void *origin_addr, void *compare_addr,
     ompi_proc_t *proc = ompi_comm_peer_lookup(module->comm, target);
     ompi_osc_pt2pt_frag_t *frag;
     ompi_osc_pt2pt_header_cswap_t *header;
+    ompi_osc_pt2pt_sync_t *pt2pt_sync;
     size_t ddt_len, payload_len, frag_len;
     ompi_osc_pt2pt_request_t *request;
     const void *packed_ddt;
@@ -668,21 +606,19 @@ int ompi_osc_pt2pt_compare_and_swap (void *origin_addr, void *compare_addr,
                          (unsigned long) result_addr, dt->name, target, (int) target_disp,
                          win->w_name));
 
-    if (!ompi_osc_pt2pt_check_access_epoch (module, target)) {
+    pt2pt_sync = ompi_osc_pt2pt_module_sync_lookup (module, target, NULL);
+    if (OPAL_UNLIKELY(NULL == pt2pt_sync)) {
         return OMPI_ERR_RMA_SYNC;
     }
 
     /* optimize self case. TODO: optimize local case */
     if (ompi_comm_rank (module->comm) == target) {
-        return ompi_osc_pt2pt_cas_self (origin_addr, compare_addr, result_addr, dt, target_disp,
-                                       module);
+        return ompi_osc_pt2pt_cas_self (pt2pt_sync, origin_addr, compare_addr, result_addr, dt, target_disp,
+                                        module);
     }
 
     /* compare-and-swaps are always request based, so that we know where to land the data */
     OMPI_OSC_PT2PT_REQUEST_ALLOC(win, request);
-    if (NULL == request) {
-        return OMPI_ERR_OUT_OF_RESOURCE;
-    }
 
     request->type = OMPI_OSC_PT2PT_HDR_TYPE_CSWAP;
     request->origin_addr = origin_addr;
@@ -696,6 +632,11 @@ int ompi_osc_pt2pt_compare_and_swap (void *origin_addr, void *compare_addr,
 
     /* we need to send both the origin and compare buffers */
     payload_len = dt->super.size * 2;
+
+    ret = ompi_datatype_get_pack_description(dt, &packed_ddt);
+    if (OMPI_SUCCESS != ret) {
+        return ret;
+    }
 
     frag_len = sizeof(ompi_osc_pt2pt_header_cswap_t) + ddt_len + payload_len;
     ret = ompi_osc_pt2pt_frag_alloc(module, target, frag_len, &frag, &ptr);
@@ -715,7 +656,6 @@ int ompi_osc_pt2pt_compare_and_swap (void *origin_addr, void *compare_addr,
     osc_pt2pt_hton(header, proc);
     ptr += sizeof(ompi_osc_pt2pt_header_cswap_t);
 
-    ret = ompi_datatype_get_pack_description(dt, &packed_ddt);
     memcpy((unsigned char*) ptr, packed_ddt, ddt_len);
     ptr += ddt_len;
 
@@ -737,7 +677,7 @@ int ompi_osc_pt2pt_compare_and_swap (void *origin_addr, void *compare_addr,
 }
 
 
-int ompi_osc_pt2pt_fetch_and_op(void *origin_addr, void *result_addr,
+int ompi_osc_pt2pt_fetch_and_op(const void *origin_addr, void *result_addr,
                                struct ompi_datatype_t *dt, int target,
                                OPAL_PTRDIFF_TYPE target_disp, struct ompi_op_t *op,
                                struct ompi_win_t *win)
@@ -746,7 +686,7 @@ int ompi_osc_pt2pt_fetch_and_op(void *origin_addr, void *result_addr,
                                         target, target_disp, 1, dt, op, win);
 }
 
-int ompi_osc_pt2pt_rput(void *origin_addr, int origin_count,
+int ompi_osc_pt2pt_rput(const void *origin_addr, int origin_count,
                        struct ompi_datatype_t *origin_dt,
                        int target, OPAL_PTRDIFF_TYPE target_disp,
                        int target_count, struct ompi_datatype_t *target_dt,
@@ -762,9 +702,6 @@ int ompi_osc_pt2pt_rput(void *origin_addr, int origin_count,
                          target_count, target_dt->name, win->w_name));
 
     OMPI_OSC_PT2PT_REQUEST_ALLOC(win, pt2pt_request);
-    if (NULL == pt2pt_request) {
-        return OMPI_ERR_OUT_OF_RESOURCE;
-    }
 
     /* short-circuit case */
     if (0 == origin_count || 0 == target_count) {
@@ -802,6 +739,7 @@ static inline int ompi_osc_pt2pt_rget_internal (void *origin_addr, int origin_co
     bool is_long_datatype = false;
     ompi_osc_pt2pt_frag_t *frag;
     ompi_osc_pt2pt_header_get_t *header;
+    ompi_osc_pt2pt_sync_t *pt2pt_sync;
     size_t ddt_len, frag_len;
     char *ptr;
     const void *packed_ddt;
@@ -813,15 +751,13 @@ static inline int ompi_osc_pt2pt_rget_internal (void *origin_addr, int origin_co
                          origin_dt->name, target, (int) target_disp,
                          target_count, target_dt->name, win->w_name));
 
-    if (!ompi_osc_pt2pt_check_access_epoch (module, target)) {
+    pt2pt_sync = ompi_osc_pt2pt_module_sync_lookup (module, target, NULL);
+    if (OPAL_UNLIKELY(NULL == pt2pt_sync)) {
         return OMPI_ERR_RMA_SYNC;
     }
 
     /* gets are always request based, so that we know where to land the data */
     OMPI_OSC_PT2PT_REQUEST_ALLOC(win, pt2pt_request);
-    if (NULL == pt2pt_request) {
-        return OMPI_ERR_OUT_OF_RESOURCE;
-    }
 
     pt2pt_request->internal = release_req;
 
@@ -835,9 +771,9 @@ static inline int ompi_osc_pt2pt_rget_internal (void *origin_addr, int origin_co
     /* optimize self communication. TODO: optimize local communication */
     if (ompi_comm_rank (module->comm) == target) {
         *request = &pt2pt_request->super;
-        return ompi_osc_pt2pt_get_self (origin_addr, origin_count, origin_dt,
-                                       target_disp, target_count, target_dt,
-                                       module, pt2pt_request);
+        return ompi_osc_pt2pt_get_self (pt2pt_sync, origin_addr, origin_count, origin_dt,
+                                        target_disp, target_count, target_dt,
+                                        module, pt2pt_request);
     }
 
     pt2pt_request->type = OMPI_OSC_PT2PT_HDR_TYPE_GET;
@@ -868,14 +804,10 @@ static inline int ompi_osc_pt2pt_rget_internal (void *origin_addr, int origin_co
     /* for bookkeeping the get is "outgoing" */
     ompi_osc_signal_outgoing (module, target, 1);
 
-    /* flush will be called at the end of this function. make sure the post message has
+    /* flush will be called at the end of this function. make sure all post messages have
      * arrived. */
-    if (!release_req && module->sc_group) {
-        while (0 != module->num_post_msgs) {
-            OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_framework.framework_output,
-                                 "waiting for post messages. num_post_msgs = %d", module->num_post_msgs));
-            opal_condition_wait(&module->cond, &module->lock);
-        }
+    if (!release_req && OMPI_OSC_PT2PT_SYNC_TYPE_PSCW == pt2pt_sync->type) {
+        ompi_osc_pt2pt_sync_wait (pt2pt_sync);
     }
 
     header = (ompi_osc_pt2pt_header_get_t*) ptr;
@@ -956,7 +888,7 @@ int ompi_osc_pt2pt_get (void *origin_addr, int origin_count, struct ompi_datatyp
                                         target_count, target_dt, win, true, &request);
 }
 
-int ompi_osc_pt2pt_raccumulate(void *origin_addr, int origin_count,
+int ompi_osc_pt2pt_raccumulate(const void *origin_addr, int origin_count,
                               struct ompi_datatype_t *origin_dt, int target,
                               OPAL_PTRDIFF_TYPE target_disp, int target_count,
                               struct ompi_datatype_t *target_dt, struct ompi_op_t *op,
@@ -973,9 +905,6 @@ int ompi_osc_pt2pt_raccumulate(void *origin_addr, int origin_count,
                          win->w_name));
 
     OMPI_OSC_PT2PT_REQUEST_ALLOC(win, pt2pt_request);
-    if (NULL == pt2pt_request) {
-        return OMPI_ERR_OUT_OF_RESOURCE;
-    }
 
     /* short-circuit case */
     if (0 == origin_count || 0 == target_count) {
@@ -1001,7 +930,7 @@ int ompi_osc_pt2pt_raccumulate(void *origin_addr, int origin_count,
 
 
 static inline
-int ompi_osc_pt2pt_rget_accumulate_internal (void *origin_addr, int origin_count,
+int ompi_osc_pt2pt_rget_accumulate_internal (const void *origin_addr, int origin_count,
                                             struct ompi_datatype_t *origin_datatype,
                                             void *result_addr, int result_count,
                                             struct ompi_datatype_t *result_datatype,
@@ -1017,6 +946,7 @@ int ompi_osc_pt2pt_rget_accumulate_internal (void *origin_addr, int origin_count
     bool is_long_msg = false;
     ompi_osc_pt2pt_frag_t *frag;
     ompi_osc_pt2pt_header_acc_t *header;
+    ompi_osc_pt2pt_sync_t *pt2pt_sync;
     size_t ddt_len, payload_len, frag_len;
     char *ptr;
     const void *packed_ddt;
@@ -1030,15 +960,13 @@ int ompi_osc_pt2pt_rget_accumulate_internal (void *origin_addr, int origin_count
                          target_rank, (int) target_disp, target_count, target_datatype->name,
                          op->o_name, win->w_name));
 
-    if (!ompi_osc_pt2pt_check_access_epoch (module, target_rank)) {
+    pt2pt_sync = ompi_osc_pt2pt_module_sync_lookup (module, target_rank, NULL);
+    if (OPAL_UNLIKELY(NULL == pt2pt_sync)) {
         return OMPI_ERR_RMA_SYNC;
     }
 
     /* get_accumulates are always request based, so that we know where to land the data */
     OMPI_OSC_PT2PT_REQUEST_ALLOC(win, pt2pt_request);
-    if (OPAL_UNLIKELY(NULL == pt2pt_request)) {
-        return OMPI_ERR_OUT_OF_RESOURCE;
-    }
 
     pt2pt_request->internal = release_req;
 
@@ -1052,10 +980,10 @@ int ompi_osc_pt2pt_rget_accumulate_internal (void *origin_addr, int origin_count
     /* optimize the self case. TODO: optimize the local case */
     if (ompi_comm_rank (module->comm) == target_rank) {
         *request = &pt2pt_request->super;
-        return ompi_osc_pt2pt_gacc_self (origin_addr, origin_count, origin_datatype,
-                                        result_addr, result_count, result_datatype,
-                                        target_disp, target_count, target_datatype,
-                                        op, module, pt2pt_request);
+        return ompi_osc_pt2pt_gacc_self (pt2pt_sync, origin_addr, origin_count, origin_datatype,
+                                         result_addr, result_count, result_datatype,
+                                         target_disp, target_count, target_datatype,
+                                         op, module, pt2pt_request);
     }
 
     pt2pt_request->type = OMPI_OSC_PT2PT_HDR_TYPE_GET_ACC;
@@ -1102,16 +1030,10 @@ int ompi_osc_pt2pt_rget_accumulate_internal (void *origin_addr, int origin_count
     /* increment the number of outgoing fragments */
     ompi_osc_signal_outgoing (module, target_rank, pt2pt_request->outstanding_requests);
 
-    /* flush will be called at the end of this function. make sure the post message has
+    /* flush will be called at the end of this function. make sure all post messages have
      * arrived. */
-    if (!release_req && module->sc_group) {
-        OPAL_THREAD_LOCK(&module->lock);
-        while (0 != module->num_post_msgs) {
-            OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_framework.framework_output,
-                                 "waiting for post messages. num_post_msgs = %d", module->num_post_msgs));
-            opal_condition_wait(&module->cond, &module->lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->lock);
+    if (!release_req && OMPI_OSC_PT2PT_SYNC_TYPE_PSCW == pt2pt_sync->type) {
+        ompi_osc_pt2pt_sync_wait (pt2pt_sync);
     }
 
     header = (ompi_osc_pt2pt_header_acc_t *) ptr;
@@ -1188,7 +1110,7 @@ int ompi_osc_pt2pt_rget_accumulate_internal (void *origin_addr, int origin_count
     return ret;
 }
 
-int ompi_osc_pt2pt_get_accumulate(void *origin_addr, int origin_count,
+int ompi_osc_pt2pt_get_accumulate(const void *origin_addr, int origin_count,
                                  struct ompi_datatype_t *origin_dt,
                                  void *result_addr, int result_count,
                                  struct ompi_datatype_t *result_dt,
@@ -1205,7 +1127,7 @@ int ompi_osc_pt2pt_get_accumulate(void *origin_addr, int origin_count,
 }
 
 
-int ompi_osc_pt2pt_rget_accumulate(void *origin_addr, int origin_count,
+int ompi_osc_pt2pt_rget_accumulate(const void *origin_addr, int origin_count,
                                   struct ompi_datatype_t *origin_dt,
                                   void *result_addr, int result_count,
                                   struct ompi_datatype_t *result_dt,

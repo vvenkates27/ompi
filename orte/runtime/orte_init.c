@@ -34,7 +34,6 @@
 #include <unistd.h>
 #endif
 
-#include "opal/mca/dstore/base/base.h"
 #include "opal/util/error.h"
 #include "opal/util/output.h"
 #include "opal/util/proc.h"
@@ -92,6 +91,25 @@ static int _convert_string_to_process_name(opal_process_name_t *name,
     return orte_util_convert_string_to_process_name(name, name_string);
 }
 
+static int _convert_process_name_to_string(char** name_string,
+                                          const opal_process_name_t *name)
+{
+    return orte_util_convert_process_name_to_string(name_string, name);
+}
+
+static char*
+_convert_jobid_to_string(opal_jobid_t jobid)
+{
+    char *str;
+    orte_util_convert_jobid_to_string(&str, jobid);
+    return str;
+}
+
+static int
+_convert_string_to_jobid(opal_jobid_t *jobid, const char *jobid_string)
+{
+    return orte_util_convert_string_to_jobid(jobid, jobid_string);
+}
 /*
  * Whether we have completed orte_init or we are in orte_finalize
  */
@@ -105,9 +123,7 @@ opal_event_base_t *orte_event_base = {0};
 bool orte_event_base_active = true;
 bool orte_proc_is_bound = false;
 int orte_progress_thread_debug = -1;
-#if OPAL_HAVE_HWLOC
 hwloc_cpuset_t orte_proc_applied_binding = NULL;
-#endif
 
 orte_process_name_t orte_name_wildcard = {ORTE_JOBID_WILDCARD, ORTE_VPID_WILDCARD};
 
@@ -133,18 +149,21 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
     }
     orte_initialized++;
 
-    /* initialize the opal layer */
-    if (ORTE_SUCCESS != (ret = opal_init(pargc, pargv))) {
-        error = "opal_init";
-        goto error;
-    }
-
     /* Convince OPAL to use our naming scheme */
     opal_process_name_print = _process_name_print_for_opal;
     opal_vpid_print = _vpid_print_for_opal;
     opal_jobid_print = _jobid_print_for_opal;
     opal_compare_proc = _process_name_compare;
     opal_convert_string_to_process_name = _convert_string_to_process_name;
+    opal_convert_process_name_to_string = _convert_process_name_to_string;
+    opal_convert_jobid_to_string = _convert_jobid_to_string;
+    opal_convert_string_to_jobid = _convert_string_to_jobid;
+
+    /* initialize the opal layer */
+    if (ORTE_SUCCESS != (ret = opal_init(pargc, pargv))) {
+        error = "opal_init";
+        goto error;
+    }
 
     /* ensure we know the type of proc for when we finalize */
     orte_process_info.proc_type = flags;
@@ -186,27 +205,9 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
     /* opal_finalize_util will call free on this pointer so set from strdup */
     opal_process_info.nodename = strdup (orte_process_info.nodename);
 
-    /* setup the dstore framework */
-    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&opal_dstore_base_framework, 0))) {
-        ORTE_ERROR_LOG(ret);
-        error = "opal_dstore_base_open";
-        goto error;
-    }
-    if (ORTE_SUCCESS != (ret = opal_dstore_base_select())) {
-        ORTE_ERROR_LOG(ret);
-        error = "opal_dstore_base_select";
-        goto error;
-    }
-    /* create the handle */
-    if (0 > (opal_dstore_internal = opal_dstore.open("INTERNAL", "hash", NULL))) {
-        error = "opal dstore internal";
-        ret = ORTE_ERR_FATAL;
-        goto error;
-    }
-
     if (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP) {
         /* let the pmix server register params */
-        pmix_server_register();
+        pmix_server_register_params();
     }
 
     /* open the ESS and select the correct module for this environment */
@@ -226,7 +227,7 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
          * start their progress thread in ess_base_std_app.c
          * at the appropriate point
          */
-        orte_event_base = opal_event_base;
+        orte_event_base = opal_sync_event_base;
     }
 
     /* initialize the RTE for this environment */
@@ -243,9 +244,7 @@ int orte_init(int* pargc, char*** pargv, orte_proc_type_t flags)
     opal_process_info.proc_session_dir = orte_process_info.proc_session_dir;
     opal_process_info.num_local_peers  = (int32_t)orte_process_info.num_local_peers;
     opal_process_info.my_local_rank    = (int32_t)orte_process_info.my_local_rank;
-#if OPAL_HAVE_HWLOC
     opal_process_info.cpuset           = orte_process_info.cpuset;
-#endif  /* OPAL_HAVE_HWLOC */
 
 #if OPAL_ENABLE_TIMING
     opal_timing_set_jobid(ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));

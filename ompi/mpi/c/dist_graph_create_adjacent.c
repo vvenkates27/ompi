@@ -10,6 +10,11 @@
  * Copyright (c) 2013-2014 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2012-2013 Inria.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
  *
  * Author(s): Torsten Hoefler
  *
@@ -25,12 +30,11 @@
 #include "ompi/mca/topo/topo.h"
 #include "ompi/mca/topo/base/base.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Dist_graph_create_adjacent = PMPI_Dist_graph_create_adjacent
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Dist_graph_create_adjacent PMPI_Dist_graph_create_adjacent
 #endif
 
 static const char FUNC_NAME[] = "MPI_Dist_graph_create_adjacent";
@@ -94,10 +98,9 @@ int MPI_Dist_graph_create_adjacent(MPI_Comm comm_old,
         return OMPI_ERRHANDLER_INVOKE(comm_old, err, FUNC_NAME);
     }
 
-    /* XXX -- CONST -- do not cast away const -- update mca/topo */
     err = topo->topo.dist_graph.dist_graph_create_adjacent(topo, comm_old, indegree,
-                                                           (int *) sources, (int *) sourceweights, outdegree,
-                                                           (int *) destinations, (int *) destweights, info,
+                                                           sources, sourceweights, outdegree,
+                                                           destinations, destweights, info,
                                                            reorder, comm_dist_graph);
     OMPI_ERRHANDLER_RETURN(err, comm_old, err, FUNC_NAME);
 }

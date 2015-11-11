@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (C) 2001-2011 Mellanox Technologies Ltd. ALL RIGHTS RESERVED.
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
@@ -177,7 +177,7 @@ static int ompi_mtl_mxm_send_ep_address(void *address, size_t address_len)
 
     /* Send address length */
     sprintf(modex_name, "%s-len", modex_component_name);
-    OPAL_MODEX_SEND_STRING(rc, PMIX_SYNC_REQD, PMIX_GLOBAL,
+    OPAL_MODEX_SEND_STRING(rc, OPAL_PMIX_GLOBAL,
                            modex_name, &address_len, sizeof(address_len));
     if (OMPI_SUCCESS != rc) {
         MXM_ERROR("failed to send address length");
@@ -192,7 +192,7 @@ static int ompi_mtl_mxm_send_ep_address(void *address, size_t address_len)
     while (modex_buf_size) {
         sprintf(modex_name, "%s-%d", modex_component_name, modex_name_id);
         modex_cur_size = (modex_buf_size < modex_max_size) ? modex_buf_size : modex_max_size;
-        OPAL_MODEX_SEND_STRING(rc, PMIX_SYNC_REQD, PMIX_GLOBAL,
+        OPAL_MODEX_SEND_STRING(rc, OPAL_PMIX_GLOBAL,
                                modex_name, modex_buf_ptr, modex_cur_size);
         if (OMPI_SUCCESS != rc) {
             MXM_ERROR("Open MPI couldn't distribute EP connection details");
@@ -232,7 +232,7 @@ static int ompi_mtl_mxm_recv_ep_address(ompi_proc_t *source_proc, void **address
 
     /* Receive address length */
     sprintf(modex_name, "%s-len", modex_component_name);
-    OPAL_MODEX_RECV_STRING(rc, modex_name, &source_proc->super,
+    OPAL_MODEX_RECV_STRING(rc, modex_name, &source_proc->super.proc_name,
                            (char**)&address_len_buf_ptr,
                            &modex_cur_size);
     if (OMPI_SUCCESS != rc) {
@@ -253,7 +253,7 @@ static int ompi_mtl_mxm_recv_ep_address(ompi_proc_t *source_proc, void **address
     modex_buf_size = 0;
     while (modex_buf_size < *address_len_p) {
         sprintf(modex_name, "%s-%d", modex_component_name, modex_name_id);
-        OPAL_MODEX_RECV_STRING(rc, modex_name, &source_proc->super,
+        OPAL_MODEX_RECV_STRING(rc, modex_name, &source_proc->super.proc_name,
                                (char**)&modex_buf_ptr,
                                &modex_cur_size);
         if (OMPI_SUCCESS != rc) {
@@ -304,26 +304,29 @@ int ompi_mtl_mxm_module_init(void)
     }
 #endif
 
-    if (NULL == (procs = ompi_proc_world(&totps))) {
-        MXM_ERROR("Unable to obtain process list");
-        return OMPI_ERROR;
-    }
+    totps = ompi_proc_world_size ();
 
     if (totps < (size_t)ompi_mtl_mxm.mxm_np) {
         MXM_VERBOSE(1, "MXM support will be disabled because of total number "
                     "of processes (%lu) is less than the minimum set by the "
                     "mtl_mxm_np MCA parameter (%u)", totps, ompi_mtl_mxm.mxm_np);
-        free(procs);
         return OMPI_ERR_NOT_SUPPORTED;
     }
     MXM_VERBOSE(1, "MXM support enabled");
 
     if (ORTE_NODE_RANK_INVALID == (lr = ompi_process_info.my_node_rank)) {
         MXM_ERROR("Unable to obtain local node rank");
-        free(procs);
         return OMPI_ERROR;
     }
     nlps = ompi_process_info.num_local_peers + 1;
+
+    /* local procs are always allocated. if that ever changes this will need to
+     * be modified. */
+    procs = ompi_proc_get_allocated (&totps);
+    if (NULL == procs) {
+        MXM_ERROR("Unable to obtain process list");
+        return OMPI_ERROR;
+    }
 
     for (proc = 0; proc < totps; proc++) {
         if (OPAL_PROC_ON_LOCAL_NODE(procs[proc]->super.proc_flags)) {
@@ -595,14 +598,8 @@ int ompi_mtl_mxm_del_procs(struct mca_mtl_base_module_t *mtl, size_t nprocs,
     size_t i;
 
 #if MXM_API >= MXM_VERSION(3,1)
-    if (ompi_mtl_mxm.bulk_disconnect) {
-        size_t nprocs_world;
-        ompi_proc_t **procs;
-        procs = ompi_proc_world(&nprocs_world);
-        if (nprocs == nprocs_world) {
-            mxm_ep_powerdown(ompi_mtl_mxm.ep);
-        }
-        free(procs);
+    if (ompi_mtl_mxm.bulk_disconnect && nprocs == ompi_proc_world_size ()) {
+        mxm_ep_powerdown(ompi_mtl_mxm.ep);
     }
 #endif
 

@@ -1,20 +1,22 @@
 /*
- *  Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
- *                          University Research and Technology
- *                          Corporation.  All rights reserved.
- *  Copyright (c) 2004-2005 The University of Tennessee and The University
- *                          of Tennessee Research Foundation.  All rights
- *                          reserved.
- *  Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
- *                          University of Stuttgart.  All rights reserved.
- *  Copyright (c) 2004-2005 The Regents of the University of California.
- *                          All rights reserved.
- *  Copyright (c) 2008-2015 University of Houston. All rights reserved.
- *  $COPYRIGHT$
+ * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ *                         University Research and Technology
+ *                         Corporation.  All rights reserved.
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
+ *                         University of Stuttgart.  All rights reserved.
+ * Copyright (c) 2004-2005 The Regents of the University of California.
+ *                         All rights reserved.
+ * Copyright (c) 2008-2015 University of Houston. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
+ * $COPYRIGHT$
  *
- *  Additional copyrights may follow
+ * Additional copyrights may follow
  *
- *  $HEADER$
+ * $HEADER$
  */
 
 #include "ompi_config.h"
@@ -53,7 +55,7 @@
 
 
 int mca_io_ompio_file_write (ompi_file_t *fp,
-			     void *buf,
+			     const void *buf,
 			     int count,
 			     struct ompi_datatype_t *datatype,
 			     ompi_status_public_t *status)
@@ -70,7 +72,7 @@ int mca_io_ompio_file_write (ompi_file_t *fp,
 }
 
 int ompio_io_ompio_file_write (mca_io_ompio_file_t *fh,
-			       void *buf,
+			       const void *buf,
 			       int count,
 			       struct ompi_datatype_t *datatype,
 			       ompi_status_public_t *status)
@@ -103,7 +105,12 @@ int ompio_io_ompio_file_write (mca_io_ompio_file_t *fh,
                                    &decoded_iov,
                                    &iov_count);
 
-    bytes_per_cycle = mca_io_ompio_cycle_buffer_size;
+    if ( -1 == mca_io_ompio_cycle_buffer_size ) {
+	bytes_per_cycle = max_data;
+    }
+    else {
+	bytes_per_cycle = mca_io_ompio_cycle_buffer_size;
+    }
     cycles = ceil((float)max_data/bytes_per_cycle);
 
 #if 0
@@ -151,7 +158,7 @@ int ompio_io_ompio_file_write (mca_io_ompio_file_t *fh,
 
 int mca_io_ompio_file_write_at (ompi_file_t *fh,
 				OMPI_MPI_OFFSET_TYPE offset,
-				void *buf,
+				const void *buf,
 				int count,
 				struct ompi_datatype_t *datatype,
 				ompi_status_public_t *status)
@@ -167,7 +174,7 @@ int mca_io_ompio_file_write_at (ompi_file_t *fh,
 
 int ompio_io_ompio_file_write_at (mca_io_ompio_file_t *fh,
 				  OMPI_MPI_OFFSET_TYPE offset,
-				  void *buf,
+				  const void *buf,
 				  int count,
 				  struct ompi_datatype_t *datatype,
 				  ompi_status_public_t *status)
@@ -190,7 +197,7 @@ int ompio_io_ompio_file_write_at (mca_io_ompio_file_t *fh,
 }
 
 int mca_io_ompio_file_iwrite (ompi_file_t *fp,
-			      void *buf,
+			      const void *buf,
 			      int count,
 			      struct ompi_datatype_t *datatype,
 			      ompi_request_t **request)
@@ -205,7 +212,7 @@ int mca_io_ompio_file_iwrite (ompi_file_t *fp,
 }
 
 int ompio_io_ompio_file_iwrite (mca_io_ompio_file_t *fh,
-				void *buf,
+				const void *buf,
 				int count,
 				struct ompi_datatype_t *datatype,
 				ompi_request_t **request)
@@ -215,8 +222,9 @@ int ompio_io_ompio_file_iwrite (mca_io_ompio_file_t *fh,
 
     ompio_req = OBJ_NEW(mca_ompio_request_t);
     ompio_req->req_type = MCA_OMPIO_REQUEST_WRITE;
+    ompio_req->req_ompi.req_state = OMPI_REQUEST_ACTIVE;
 
-    if ( 0 == count ) {
+  if ( 0 == count ) {
 	ompi_request_complete (&ompio_req->req_ompi, 0);
 	ompio_req->req_ompi.req_status.MPI_ERROR = OMPI_SUCCESS;
 	ompio_req->req_ompi.req_status._ucount = 0;
@@ -291,7 +299,7 @@ int ompio_io_ompio_file_iwrite (mca_io_ompio_file_t *fh,
 
 int mca_io_ompio_file_iwrite_at (ompi_file_t *fh,
 				 OMPI_MPI_OFFSET_TYPE offset,
-				 void *buf,
+				 const void *buf,
 				 int count,
 				 struct ompi_datatype_t *datatype,
 				 ompi_request_t **request)
@@ -307,7 +315,7 @@ int mca_io_ompio_file_iwrite_at (ompi_file_t *fh,
 
 int ompio_io_ompio_file_iwrite_at (mca_io_ompio_file_t *fh,
 				   OMPI_MPI_OFFSET_TYPE offset,
-				   void *buf,
+				   const void *buf,
 				   int count,
 				   struct ompi_datatype_t *datatype,
 				   ompi_request_t **request)
@@ -464,7 +472,7 @@ int mca_io_ompio_build_io_array ( mca_io_ompio_file_t *fh, int index, int cycles
 /******************************************************************/
 
 int mca_io_ompio_file_write_all (ompi_file_t *fh,
-				 void *buf,
+				 const void *buf,
 				 int count,
 				 struct ompi_datatype_t *datatype,
 				 ompi_status_public_t *status)
@@ -493,7 +501,7 @@ int mca_io_ompio_file_write_all (ompi_file_t *fh,
 
 int mca_io_ompio_file_write_at_all (ompi_file_t *fh,
 				    OMPI_MPI_OFFSET_TYPE offset,
-				    void *buf,
+				    const void *buf,
 				    int count,
 				    struct ompi_datatype_t *datatype,
 				    ompi_status_public_t *status)
@@ -508,7 +516,7 @@ int mca_io_ompio_file_write_at_all (ompi_file_t *fh,
 }
 
 int mca_io_ompio_file_iwrite_all (ompi_file_t *fh,
-				  void *buf,
+				  const void *buf,
 				  int count,
 				  struct ompi_datatype_t *datatype,
 				  ompi_request_t **request)
@@ -539,7 +547,7 @@ int mca_io_ompio_file_iwrite_all (ompi_file_t *fh,
 
 int ompio_io_ompio_file_write_at_all (mca_io_ompio_file_t *fh,
 				      OMPI_MPI_OFFSET_TYPE offset,
-				      void *buf,
+				      const void *buf,
 				      int count,
 				      struct ompi_datatype_t *datatype,
 				      ompi_status_public_t *status)
@@ -561,24 +569,36 @@ int ompio_io_ompio_file_write_at_all (mca_io_ompio_file_t *fh,
 
 int mca_io_ompio_file_iwrite_at_all (ompi_file_t *fh,
 				     OMPI_MPI_OFFSET_TYPE offset,
-				     void *buf,
+				     const void *buf,
 				     int count,
 				     struct ompi_datatype_t *datatype,
 				     ompi_request_t **request)
 {
     int ret = OMPI_SUCCESS;
     mca_io_ompio_data_t *data;
-    mca_io_ompio_file_t *fp=NULL;
-    OMPI_MPI_OFFSET_TYPE prev_offset;
 
     data = (mca_io_ompio_data_t *) fh->f_io_selected_data;
-    fp = &data->ompio_fh;
+    ret = ompio_io_ompio_file_iwrite_at_all ( &data->ompio_fh, offset, buf, count, datatype, request );
+    return ret;
+}
+
+int ompio_io_ompio_file_iwrite_at_all (mca_io_ompio_file_t *fp,
+				       OMPI_MPI_OFFSET_TYPE offset,
+				       const void *buf,
+				       int count,
+				       struct ompi_datatype_t *datatype,
+				       ompi_request_t **request)
+{
+
+    int ret = OMPI_SUCCESS;
+    OMPI_MPI_OFFSET_TYPE prev_offset;
+
     ompio_io_ompio_file_get_position (fp, &prev_offset );
 
     ompi_io_ompio_set_explicit_offset (fp, offset);
 
     if ( NULL != fp->f_fcoll->fcoll_file_iwrite_all ) {
-	ret = fp->f_fcoll->fcoll_file_iwrite_all (&data->ompio_fh,
+	ret = fp->f_fcoll->fcoll_file_iwrite_all (fp,
 						  buf,
 						  count,
 						  datatype,
@@ -591,10 +611,12 @@ int mca_io_ompio_file_iwrite_at_all (ompi_file_t *fh,
 	ret = ompio_io_ompio_file_iwrite ( fp, buf, count, datatype, request );
     }
 
-
     ompi_io_ompio_set_explicit_offset (fp, prev_offset);
     return ret;
 }
+
+
+
 
 
 /* Infrastructure for shared file pointer operations */
@@ -602,7 +624,7 @@ int mca_io_ompio_file_iwrite_at_all (ompi_file_t *fh,
 /******************************************************/
 
 int mca_io_ompio_file_write_shared (ompi_file_t *fp,
-				    void *buf,
+				    const void *buf,
 				    int count,
 				    struct ompi_datatype_t *datatype,
 				    ompi_status_public_t * status)
@@ -627,7 +649,7 @@ int mca_io_ompio_file_write_shared (ompi_file_t *fp,
 }
 
 int mca_io_ompio_file_iwrite_shared (ompi_file_t *fp,
-				     void *buf,
+				     const void *buf,
 				     int count,
 				     struct ompi_datatype_t *datatype,
 				     ompi_request_t **request)
@@ -652,7 +674,7 @@ int mca_io_ompio_file_iwrite_shared (ompi_file_t *fp,
 }
 
 int mca_io_ompio_file_write_ordered (ompi_file_t *fp,
-				     void *buf,
+				     const void *buf,
 				     int count,
 				     struct ompi_datatype_t *datatype,
 				     ompi_status_public_t * status)
@@ -677,7 +699,7 @@ int mca_io_ompio_file_write_ordered (ompi_file_t *fp,
 }
 
 int mca_io_ompio_file_write_ordered_begin (ompi_file_t *fp,
-					   void *buf,
+					   const void *buf,
 					   int count,
 					   struct ompi_datatype_t *datatype)
 {
@@ -701,7 +723,7 @@ int mca_io_ompio_file_write_ordered_begin (ompi_file_t *fp,
 }
 
 int mca_io_ompio_file_write_ordered_end (ompi_file_t *fp,
-					 void *buf,
+					 const void *buf,
 					 ompi_status_public_t *status)
 {
     int ret = OMPI_SUCCESS;
@@ -727,7 +749,7 @@ int mca_io_ompio_file_write_ordered_end (ompi_file_t *fp,
 /* Split collectives . Not really used but infrastructure is in place */
 /**********************************************************************/
 int mca_io_ompio_file_write_all_begin (ompi_file_t *fh,
-				       void *buf,
+				       const void *buf,
 				       int count,
 				       struct ompi_datatype_t *datatype)
 {
@@ -748,7 +770,7 @@ int mca_io_ompio_file_write_all_begin (ompi_file_t *fh,
 }
 
 int mca_io_ompio_file_write_all_end (ompi_file_t *fh,
-				     void *buf,
+				     const void *buf,
 				     ompi_status_public_t *status)
 {
     int ret = OMPI_SUCCESS;
@@ -767,56 +789,42 @@ int mca_io_ompio_file_write_all_end (ompi_file_t *fh,
 
 int mca_io_ompio_file_write_at_all_begin (ompi_file_t *fh,
 					  OMPI_MPI_OFFSET_TYPE offset,
-					  void *buf,
+					  const void *buf,
 					  int count,
 					  struct ompi_datatype_t *datatype)
 {
     int ret = OMPI_SUCCESS;
-    mca_io_ompio_data_t *data;
+    mca_io_ompio_data_t *data=NULL;
+    mca_io_ompio_file_t *fp=NULL;
 
     data = (mca_io_ompio_data_t *) fh->f_io_selected_data;
-    ret = ompio_io_ompio_file_write_at_all_begin ( &data->ompio_fh,  offset, buf, count, datatype );
-    return ret;
-}
+    fp = &data->ompio_fh;
 
-int ompio_io_ompio_file_write_at_all_begin (mca_io_ompio_file_t *fh,
-					    OMPI_MPI_OFFSET_TYPE offset,
-					    void *buf,
-					    int count,
-					    struct ompi_datatype_t *datatype)
-{
-    int ret = OMPI_SUCCESS;
-
-    if ( true == fh->f_split_coll_in_use ) {
+    if ( true == fp->f_split_coll_in_use ) {
 	printf("Only one split collective I/O operation allowed per file handle at any given point in time!\n");
 	return MPI_ERR_REQUEST;
     }
-    ret = mca_io_ompio_file_iwrite_at_all ( fh->f_fh, offset, buf, count, datatype, &fh->f_split_coll_req );
-    fh->f_split_coll_in_use = true;
+    ret = ompio_io_ompio_file_iwrite_at_all ( fp, offset, buf, count, datatype, &fp->f_split_coll_req );
+    fp->f_split_coll_in_use = true;
+
     return ret;
 }
 
+
 int mca_io_ompio_file_write_at_all_end (ompi_file_t *fh,
-					void *buf,
+					const void *buf,
 					ompi_status_public_t * status)
 {
     int ret = OMPI_SUCCESS;
     mca_io_ompio_data_t *data;
+    mca_io_ompio_file_t *fp=NULL;
 
     data = (mca_io_ompio_data_t *) fh->f_io_selected_data;
-    ret = ompio_io_ompio_file_read_at_all_end ( &data->ompio_fh, buf, status );
-    return ret;
-}
-
-int ompio_io_ompio_file_write_at_all_end (mca_io_ompio_file_t *fh,
-					  void *buf,
-					  ompi_status_public_t * status)
-{
-    int ret = OMPI_SUCCESS;
-    ret = ompi_request_wait ( &fh->f_split_coll_req, status );
+    fp = &data->ompio_fh;
+    ret = ompi_request_wait ( &fp->f_split_coll_req, status );
 
     /* remove the flag again */
-    fh->f_split_coll_in_use = false;
+    fp->f_split_coll_in_use = false;
+
     return ret;
 }
-

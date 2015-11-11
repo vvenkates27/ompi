@@ -95,12 +95,11 @@ end subroutine pompi_buffer_attach_f
 ! PMPI_BUFFER_DETACH (i.e., it is different than the mpif.h / mpi
 ! module C implementation function).
 !
-! Note, too, we don't need a "p" version of the C implementation
-! function -- Fortran's interfaces provide MPI_ and PMPI_ names for
-! us; they can just both be bound to the same back-end
+! Note, too, the "p" version of the C implementation
+! function is a 1-line routine. It calls
 ! ompi_buffer_detach_f08 C function.
 subroutine pompi_buffer_detach_f(buffer_addr,size,ierror) &
-   BIND(C, name="ompi_buffer_detach_f08")
+   BIND(C, name="pompi_buffer_detach_f08")
    implicit none
    OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buffer_addr
    INTEGER, INTENT(OUT) :: size
@@ -1418,7 +1417,7 @@ subroutine pompi_type_set_name_f(type,type_name,ierror,type_name_len) &
 end subroutine pompi_type_set_name_f
 
 subroutine pompi_win_allocate_f(size, disp_unit, info, comm, &
-      baseptr, win, ierror) BIND(C, name="ompi_win_allocate_f")
+      baseptr, win, ierror) BIND(C, name="pompi_win_allocate_f")
   USE, INTRINSIC ::  ISO_C_BINDING, ONLY : C_PTR
   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
   INTEGER(KIND=MPI_ADDRESS_KIND), INTENT(IN) ::  size
@@ -1431,7 +1430,7 @@ subroutine pompi_win_allocate_f(size, disp_unit, info, comm, &
 end subroutine pompi_win_allocate_f
 
 subroutine pompi_win_allocate_shared_f(size, disp_unit, info, comm, &
-      baseptr, win, ierror) BIND(C, name="ompi_win_allocate_shared_f")
+      baseptr, win, ierror) BIND(C, name="pompi_win_allocate_shared_f")
   USE, INTRINSIC ::  ISO_C_BINDING, ONLY : C_PTR
   use :: mpi_f08_types, only : MPI_ADDRESS_KIND
   INTEGER(KIND=MPI_ADDRESS_KIND), INTENT(IN) ::  size
@@ -2537,6 +2536,30 @@ subroutine pompi_file_iread_at_f(fh,offset,buf,count,datatype,request,ierror) &
    INTEGER, INTENT(OUT) :: ierror
 end subroutine pompi_file_iread_at_f
 
+subroutine pompi_file_iread_all_f(fh,buf,count,datatype,request,ierror) &
+   BIND(C, name="pompi_file_iread_all_f")
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine pompi_file_iread_all_f
+
+subroutine pompi_file_iread_at_all_f(fh,offset,buf,count,datatype,request,ierror) &
+   BIND(C, name="pompi_file_iread_at_all_f")
+   use :: mpi_f08_types, only : MPI_OFFSET_KIND
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   INTEGER(MPI_OFFSET_KIND), INTENT(IN) :: offset
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine pompi_file_iread_at_all_f
+
 subroutine pompi_file_iread_shared_f(fh,buf,count,datatype,request,ierror) &
    BIND(C, name="pompi_file_iread_shared_f")
    implicit none
@@ -2571,6 +2594,30 @@ subroutine pompi_file_iwrite_at_f(fh,offset,buf,count,datatype,request,ierror) &
    INTEGER, INTENT(OUT) :: request
    INTEGER, INTENT(OUT) :: ierror
 end subroutine pompi_file_iwrite_at_f
+
+subroutine pompi_file_iwrite_all_f(fh,buf,count,datatype,request,ierror) &
+   BIND(C, name="pompi_file_iwrite_all_f")
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine pompi_file_iwrite_all_f
+
+subroutine pompi_file_iwrite_at_all_f(fh,offset,buf,count,datatype,request,ierror) &
+   BIND(C, name="pompi_file_iwrite_at_all_f")
+   use :: mpi_f08_types, only : MPI_OFFSET_KIND
+   implicit none
+   INTEGER, INTENT(IN) :: fh
+   INTEGER(MPI_OFFSET_KIND), INTENT(IN) :: offset
+   OMPI_FORTRAN_IGNORE_TKR_TYPE, INTENT(IN) :: buf
+   INTEGER, INTENT(IN) :: count
+   INTEGER, INTENT(IN) :: datatype
+   INTEGER, INTENT(OUT) :: request
+   INTEGER, INTENT(OUT) :: ierror
+end subroutine pompi_file_iwrite_at_all_f
 
 subroutine pompi_file_iwrite_shared_f(fh,buf,count,datatype,request,ierror) &
    BIND(C, name="pompi_file_iwrite_shared_f")

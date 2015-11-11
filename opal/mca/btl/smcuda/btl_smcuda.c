@@ -18,6 +18,7 @@
  * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015      Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -234,7 +235,6 @@ smcuda_btl_first_time_init(mca_btl_smcuda_t *smcuda_btl,
     mca_btl_smcuda_component.mem_node = my_mem_node = 0;
     mca_btl_smcuda_component.num_mem_nodes = num_mem_nodes = 1;
 
-#if OPAL_HAVE_HWLOC
     /* If we have hwloc support, then get accurate information */
     if (NULL != opal_hwloc_topology) {
         i = opal_hwloc_base_get_nbobjs_by_type(opal_hwloc_topology,
@@ -284,7 +284,6 @@ smcuda_btl_first_time_init(mca_btl_smcuda_t *smcuda_btl,
             }
         }
     }
-#endif
 
     if (NULL == (res = calloc(1, sizeof(*res)))) {
         return OPAL_ERR_OUT_OF_RESOURCE;
@@ -885,6 +884,13 @@ int mca_btl_smcuda_sendi( struct mca_btl_base_module_t* btl,
     if (mca_common_cuda_enabled && (IPC_INIT == endpoint->ipcstate) && mca_btl_smcuda_component.use_cuda_ipc) {
         mca_btl_smcuda_send_cuda_ipc_request(btl, endpoint);
     }
+    /* We do not want to use this path when we have CUDA IPC support */
+    if ((convertor->flags & CONVERTOR_CUDA) && (IPC_ACKED == endpoint->ipcstate)) {
+        if (NULL != descriptor) {
+            *descriptor = mca_btl_smcuda_alloc(btl, endpoint, order, payload_size+header_size, flags);
+        }
+        return OPAL_ERR_RESOURCE_BUSY;
+    }
 #endif /* OPAL_CUDA_SUPPORT */
 
     /* this check should be unnecessary... turn into an assertion? */
@@ -1004,6 +1010,7 @@ static struct mca_btl_base_registration_handle_t *mca_btl_smcuda_register_mem (
     size_t size, uint32_t flags)
 {
     mca_mpool_common_cuda_reg_t *reg;
+    int access_flags = flags & MCA_BTL_REG_FLAG_ACCESS_ANY;
     int mpool_flags = 0;
 
     if (MCA_BTL_REG_FLAG_CUDA_GPU_MEM & flags) {
@@ -1011,7 +1018,7 @@ static struct mca_btl_base_registration_handle_t *mca_btl_smcuda_register_mem (
     }
 
     btl->btl_mpool->mpool_register (btl->btl_mpool, base, size, mpool_flags,
-                                    (mca_mpool_base_registration_t **) &reg);
+                                    access_flags, (mca_mpool_base_registration_t **) &reg);
     if (OPAL_UNLIKELY(NULL == reg)) {
         return NULL;
     }
@@ -1082,6 +1089,7 @@ int mca_btl_smcuda_get_cuda (struct mca_btl_base_module_t *btl,
      * support. */
     rc = ep->mpool->mpool_register(ep->mpool, remote_handle->reg_data.memh_seg_addr.pval,
                                    remote_handle->reg_data.memh_seg_len, ep->peer_smp_rank,
+                                   MCA_MPOOL_ACCESS_LOCAL_WRITE,
                                    (mca_mpool_base_registration_t **)&reg_ptr);
 
     if (OPAL_SUCCESS != rc) {

@@ -45,7 +45,7 @@
  * for the first block: thus we must copy sendbuf to accumbuf on intermediate
  * to keep the optimized loop happy.
  */
-int ompi_coll_base_reduce_generic( void* sendbuf, void* recvbuf, int original_count,
+int ompi_coll_base_reduce_generic( const void* sendbuf, void* recvbuf, int original_count,
                                     ompi_datatype_t* datatype, ompi_op_t* op,
                                     int root, ompi_communicator_t* comm,
                                     mca_coll_base_module_t *module,
@@ -56,10 +56,10 @@ int ompi_coll_base_reduce_generic( void* sendbuf, void* recvbuf, int original_co
     char *accumbuf = NULL, *accumbuf_free = NULL;
     char *local_op_buffer = NULL, *sendtmpbuf = NULL;
     ptrdiff_t extent, lower_bound, segment_increment;
-    size_t typelng;
-    ompi_request_t* reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+    ompi_request_t **sreq = NULL, *reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
     int num_segments, line, ret, segindex, i, rank;
     int recvcount, prevcount, inbi;
+    size_t typelng;
 
     /**
      * Determine number of segments and number of elements
@@ -279,10 +279,8 @@ int ompi_coll_base_reduce_generic( void* sendbuf, void* recvbuf, int original_co
         else {
 
             int creq = 0;
-            ompi_request_t **sreq = NULL;
 
-            sreq = (ompi_request_t**) calloc( max_outstanding_reqs,
-                                              sizeof(ompi_request_t*) );
+            sreq = coll_base_comm_get_reqs(module->base_data, max_outstanding_reqs);
             if (NULL == sreq) { line = __LINE__; ret = -1; goto error_hndl; }
 
             /* post first group of requests */
@@ -303,7 +301,6 @@ int ompi_coll_base_reduce_generic( void* sendbuf, void* recvbuf, int original_co
                 /* wait on a posted request to complete */
                 ret = ompi_request_wait(&sreq[creq], MPI_STATUS_IGNORE);
                 if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl;  }
-                sreq[creq] = MPI_REQUEST_NULL;
 
                 if( original_count < count_by_segment ) {
                     count_by_segment = original_count;
@@ -325,9 +322,6 @@ int ompi_coll_base_reduce_generic( void* sendbuf, void* recvbuf, int original_co
             ret = ompi_request_wait_all( max_outstanding_reqs, sreq,
                                          MPI_STATUSES_IGNORE );
             if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl;  }
-
-            /* free requests */
-            free(sreq);
         }
     }
     return OMPI_SUCCESS;
@@ -339,6 +333,9 @@ int ompi_coll_base_reduce_generic( void* sendbuf, void* recvbuf, int original_co
     if( inbuf_free[0] != NULL ) free(inbuf_free[0]);
     if( inbuf_free[1] != NULL ) free(inbuf_free[1]);
     if( accumbuf_free != NULL ) free(accumbuf);
+    if( NULL != sreq ) {
+        ompi_coll_base_free_reqs(sreq, max_outstanding_reqs);
+    }
     return ret;
 }
 
@@ -349,7 +346,7 @@ int ompi_coll_base_reduce_generic( void* sendbuf, void* recvbuf, int original_co
      meaning that at least one datatype must fit in the segment !
 */
 
-int ompi_coll_base_reduce_intra_chain( void *sendbuf, void *recvbuf, int count,
+int ompi_coll_base_reduce_intra_chain( const void *sendbuf, void *recvbuf, int count,
                                         ompi_datatype_t* datatype,
                                         ompi_op_t* op, int root,
                                         ompi_communicator_t* comm,
@@ -379,7 +376,7 @@ int ompi_coll_base_reduce_intra_chain( void *sendbuf, void *recvbuf, int count,
 }
 
 
-int ompi_coll_base_reduce_intra_pipeline( void *sendbuf, void *recvbuf,
+int ompi_coll_base_reduce_intra_pipeline( const void *sendbuf, void *recvbuf,
                                            int count, ompi_datatype_t* datatype,
                                            ompi_op_t* op, int root,
                                            ompi_communicator_t* comm,
@@ -410,7 +407,7 @@ int ompi_coll_base_reduce_intra_pipeline( void *sendbuf, void *recvbuf,
                                            segcount, max_outstanding_reqs );
 }
 
-int ompi_coll_base_reduce_intra_binary( void *sendbuf, void *recvbuf,
+int ompi_coll_base_reduce_intra_binary( const void *sendbuf, void *recvbuf,
                                          int count, ompi_datatype_t* datatype,
                                          ompi_op_t* op, int root,
                                          ompi_communicator_t* comm,
@@ -441,7 +438,7 @@ int ompi_coll_base_reduce_intra_binary( void *sendbuf, void *recvbuf,
                                            segcount, max_outstanding_reqs );
 }
 
-int ompi_coll_base_reduce_intra_binomial( void *sendbuf, void *recvbuf,
+int ompi_coll_base_reduce_intra_binomial( const void *sendbuf, void *recvbuf,
                                            int count, ompi_datatype_t* datatype,
                                            ompi_op_t* op, int root,
                                            ompi_communicator_t* comm,
@@ -479,7 +476,7 @@ int ompi_coll_base_reduce_intra_binomial( void *sendbuf, void *recvbuf,
  * Acecpts:       same as MPI_Reduce()
  * Returns:       MPI_SUCCESS or error code
  */
-int ompi_coll_base_reduce_intra_in_order_binary( void *sendbuf, void *recvbuf,
+int ompi_coll_base_reduce_intra_in_order_binary( const void *sendbuf, void *recvbuf,
                                                   int count,
                                                   ompi_datatype_t* datatype,
                                                   ompi_op_t* op, int root,
@@ -489,7 +486,8 @@ int ompi_coll_base_reduce_intra_in_order_binary( void *sendbuf, void *recvbuf,
                                                   int max_outstanding_reqs  )
 {
     int ret, rank, size, io_root, segcount = count;
-    void *use_this_sendbuf = NULL, *use_this_recvbuf = NULL;
+    void *use_this_sendbuf = NULL;
+    void *use_this_recvbuf = NULL;
     size_t typelng;
     mca_coll_base_module_t *base_module = (mca_coll_base_module_t*) module;
     mca_coll_base_comm_t *data = base_module->base_data;
@@ -516,7 +514,7 @@ int ompi_coll_base_reduce_intra_in_order_binary( void *sendbuf, void *recvbuf,
        operations for non-commutative ops.
     */
     io_root = size - 1;
-    use_this_sendbuf = sendbuf;
+    use_this_sendbuf = (void *)sendbuf;
     use_this_recvbuf = recvbuf;
     if (io_root != root) {
         ptrdiff_t tlb, text, lb, ext;
@@ -597,7 +595,7 @@ int ompi_coll_base_reduce_intra_in_order_binary( void *sendbuf, void *recvbuf,
  *  Returns:    - MPI_SUCCESS or error code
  */
 int
-ompi_coll_base_reduce_intra_basic_linear(void *sbuf, void *rbuf, int count,
+ompi_coll_base_reduce_intra_basic_linear(const void *sbuf, void *rbuf, int count,
                                          struct ompi_datatype_t *dtype,
                                          struct ompi_op_t *op,
                                          int root,

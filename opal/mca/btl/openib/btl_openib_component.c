@@ -16,9 +16,9 @@
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2009-2012 Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2011-2014 NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2011-2015 NVIDIA Corporation.  All rights reserved.
  * Copyright (c) 2012      Oak Ridge National Laboratory.  All rights reserved
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014      Bull SAS.  All rights reserved.
@@ -97,7 +97,6 @@
 #include "btl_openib_ini.h"
 #include "btl_openib_mca.h"
 #include "btl_openib_xrc.h"
-#include "btl_openib_fd.h"
 #if BTL_OPENIB_FAILOVER_ENABLED
 #include "btl_openib_failover.h"
 #endif
@@ -200,6 +199,10 @@ static int btl_openib_component_register(void)
         return OPAL_ERR_NOT_AVAILABLE;
     }
 
+#if OPAL_CUDA_SUPPORT
+    mca_common_cuda_register_mca_variables();
+#endif
+
     return OPAL_SUCCESS;
 }
 
@@ -241,32 +244,13 @@ static int btl_openib_component_close(void)
 {
     int rc = OPAL_SUCCESS;
 
-    /* Tell the async thread to shutdown */
-    if (mca_btl_openib_component.use_async_event_thread &&
-        0 != mca_btl_openib_component.async_thread) {
-	mca_btl_openib_async_cmd_t async_command = {.a_cmd = OPENIB_ASYNC_THREAD_EXIT,
-                                                    .fd = -1, .qp = NULL};
-        if (write(mca_btl_openib_component.async_pipe[1], &async_command,
-                  sizeof(mca_btl_openib_async_cmd_t)) < 0) {
-            BTL_ERROR(("Failed to communicate with async event thread"));
-            rc = OPAL_ERROR;
-        } else {
-            if (pthread_join(mca_btl_openib_component.async_thread, NULL)) {
-                BTL_ERROR(("Failed to stop OpenIB async event thread"));
-                rc = OPAL_ERROR;
-            }
-        }
-        close(mca_btl_openib_component.async_pipe[0]);
-        close(mca_btl_openib_component.async_pipe[1]);
-        close(mca_btl_openib_component.async_comp_pipe[0]);
-        close(mca_btl_openib_component.async_comp_pipe[1]);
-    }
+    /* remove the async event from the event base */
+    mca_btl_openib_async_fini ();
 
     OBJ_DESTRUCT(&mca_btl_openib_component.srq_manager.lock);
     OBJ_DESTRUCT(&mca_btl_openib_component.srq_manager.srq_addr_table);
 
     opal_btl_openib_connect_base_finalize();
-    opal_btl_openib_fd_finalize();
     opal_btl_openib_ini_finalize();
 
     if (NULL != mca_btl_openib_component.default_recv_qps) {
@@ -447,7 +431,7 @@ static int btl_openib_modex_send(void)
     }
 
     /* All done -- send it! */
-    OPAL_MODEX_SEND(rc, PMIX_SYNC_REQD, PMIX_GLOBAL,
+    OPAL_MODEX_SEND(rc, OPAL_PMIX_GLOBAL,
                     &mca_btl_openib_component.super.btl_version,
                     message, msg_size);
     free(message);
@@ -582,11 +566,24 @@ static int openib_reg_mr(void *reg_data, void *base, size_t size,
 {
     mca_btl_openib_device_t *device = (mca_btl_openib_device_t*)reg_data;
     mca_btl_openib_reg_t *openib_reg = (mca_btl_openib_reg_t*)reg;
-    enum ibv_access_flags access_flag = (enum ibv_access_flags) (IBV_ACCESS_LOCAL_WRITE |
-        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
+    enum ibv_access_flags access_flag = 0;
+
+    if (reg->access_flags & MCA_MPOOL_ACCESS_REMOTE_READ) {
+        access_flag |= IBV_ACCESS_REMOTE_READ;
+    }
+
+    if (reg->access_flags & MCA_MPOOL_ACCESS_REMOTE_WRITE) {
+        access_flag |= IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    }
+
+    if (reg->access_flags & MCA_MPOOL_ACCESS_LOCAL_WRITE) {
+        access_flag |= IBV_ACCESS_LOCAL_WRITE;
+    }
 
 #if HAVE_DECL_IBV_ATOMIC_HCA
-    access_flag |= IBV_ACCESS_REMOTE_ATOMIC;
+    if (reg->access_flags & MCA_MPOOL_ACCESS_REMOTE_ATOMIC) {
+        access_flag |= IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_LOCAL_WRITE;
+    }
 #endif
 
     if (device->mem_reg_max &&
@@ -902,7 +899,7 @@ static void device_construct(mca_btl_openib_device_t *device)
     device->ib_dev_context = NULL;
     device->ib_pd = NULL;
     device->mpool = NULL;
-#if OPAL_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     device->ib_channel = NULL;
 #endif
     device->btls = 0;
@@ -922,10 +919,6 @@ static void device_construct(mca_btl_openib_device_t *device)
     device->xrc_fd = -1;
 #endif
     device->qps = NULL;
-    mca_btl_openib_component.async_pipe[0] =
-        mca_btl_openib_component.async_pipe[1] = -1;
-    mca_btl_openib_component.async_comp_pipe[0] =
-        mca_btl_openib_component.async_comp_pipe[1] = -1;
     OBJ_CONSTRUCT(&device->device_lock, opal_mutex_t);
     OBJ_CONSTRUCT(&device->send_free_control, opal_free_list_t);
     device->max_inline_data = 0;
@@ -936,8 +929,8 @@ static void device_destruct(mca_btl_openib_device_t *device)
 {
     int i;
 
-#if OPAL_ENABLE_PROGRESS_THREADS
-    if(device->progress) {
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
+    if (device->progress) {
         device->progress = false;
         if (pthread_cancel(device->thread.t_handle)) {
             BTL_ERROR(("Failed to cancel OpenIB progress thread"));
@@ -945,27 +938,15 @@ static void device_destruct(mca_btl_openib_device_t *device)
         }
         opal_thread_join(&device->thread, NULL);
     }
+
     if (ibv_destroy_comp_channel(device->ib_channel)) {
         BTL_VERBOSE(("Failed to close comp_channel"));
         goto device_error;
     }
 #endif
+
     /* signaling to async_tread to stop poll for this device */
-    if (mca_btl_openib_component.use_async_event_thread &&
-        -1 != mca_btl_openib_component.async_pipe[1]) {
-	mca_btl_openib_async_cmd_t async_command = {.a_cmd = OPENIB_ASYNC_CMD_FD_REMOVE,
-                                                    .fd = device->ib_dev_context->async_fd,
-                                                    .qp = NULL};
-        if (write(mca_btl_openib_component.async_pipe[1], &async_command,
-                    sizeof(mca_btl_openib_async_cmd_t)) < 0){
-            BTL_ERROR(("Failed to write to pipe"));
-            goto device_error;
-        }
-        /* wait for ok from thread */
-        if (OPAL_SUCCESS != btl_openib_async_command_done(device->ib_dev_context->async_fd)){
-            goto device_error;
-        }
-    }
+    mca_btl_openib_async_rem_device (device);
 
     if(device->eager_rdma_buffers) {
         int i;
@@ -1006,10 +987,6 @@ static void device_destruct(mca_btl_openib_device_t *device)
     }
 
 #if HAVE_XRC
-
-    if (!mca_btl_openib_xrc_check_api()) {
-        return;
-    }
 
     if (MCA_BTL_XRC_ENABLED) {
         if (OPAL_SUCCESS != mca_btl_openib_close_xrc_domain(device)) {
@@ -1508,7 +1485,6 @@ static uint64_t read_module_param(char *file, uint64_t value, uint64_t max)
 /* calculate memory registation limits */
 static uint64_t calculate_total_mem (void)
 {
-#if OPAL_HAVE_HWLOC
     hwloc_obj_t machine;
 
     machine = hwloc_get_next_obj_by_type (opal_hwloc_topology, HWLOC_OBJ_MACHINE, NULL);
@@ -1517,9 +1493,6 @@ static uint64_t calculate_total_mem (void)
     }
 
     return machine->memory.total_memory;
-#else
-    return 0;
-#endif
 }
 
 
@@ -1720,7 +1693,11 @@ static int init_one_device(opal_list_t *btl_list, struct ibv_device* ib_dev)
     /* If we did find values for this device (or in the defaults
        section), handle them */
     merge_values(&values, &default_values);
-    if (values.mtu_set) {
+    /*  If MCA param was set, use it. If not, check the INI file
+        or default to IBV_MTU_1024 */
+    if (0 < mca_btl_openib_component.ib_mtu) {
+        device->mtu = mca_btl_openib_component.ib_mtu;
+    } else if (values.mtu_set) {
         switch (values.mtu) {
         case 256:
             device->mtu = IBV_MTU_256;
@@ -1739,11 +1716,11 @@ static int init_one_device(opal_list_t *btl_list, struct ibv_device* ib_dev)
             break;
         default:
             BTL_ERROR(("invalid MTU value specified in INI file (%d); ignored", values.mtu));
-            device->mtu = mca_btl_openib_component.ib_mtu;
+            device->mtu = IBV_MTU_1024 ;
             break;
         }
     } else {
-        device->mtu = mca_btl_openib_component.ib_mtu;
+        device->mtu = IBV_MTU_1024 ;
     }
 
     /* Allocate the protection domain for the device */
@@ -2329,7 +2306,6 @@ static float get_ib_dev_distance(struct ibv_device *dev)
         return distance;
     }
 
-#if OPAL_HAVE_HWLOC
     float a, b;
     int i;
     hwloc_cpuset_t my_cpuset = NULL, ibv_cpuset = NULL;
@@ -2363,6 +2339,13 @@ static float get_ib_dev_distance(struct ibv_device *dev)
         goto out;
     }
 
+    opal_output_verbose(5, opal_btl_base_framework.framework_output,
+                        "hwloc_distances->nbobjs=%d", hwloc_distances->nbobjs);
+    for (i = 0; i < (int)(2 *  hwloc_distances->nbobjs); i++) {
+        opal_output_verbose(5, opal_btl_base_framework.framework_output,
+                            "hwloc_distances->latency[%d]=%f", i, hwloc_distances->latency[i]);
+    }
+
     /* If ibv_obj is a NUMA node or below, we're good. */
     switch (ibv_obj->type) {
     case HWLOC_OBJ_NODE:
@@ -2378,6 +2361,7 @@ static float get_ib_dev_distance(struct ibv_device *dev)
     default:
         /* If it's above a NUMA node, then I don't know how to compute
            the distance... */
+        opal_output_verbose(5, opal_btl_base_framework.framework_output, "ibv_obj->type set to NULL");
         ibv_obj = NULL;
         break;
     }
@@ -2387,6 +2371,8 @@ static float get_ib_dev_distance(struct ibv_device *dev)
         goto out;
     }
 
+    opal_output_verbose(5, opal_btl_base_framework.framework_output,
+                        "ibv_obj->logical_index=%d", ibv_obj->logical_index);
     /* This function is only called if the process is bound, so let's
        find out where we are bound to.  For the moment, we only care
        about the NUMA node to which we are bound. */
@@ -2413,6 +2399,8 @@ static float get_ib_dev_distance(struct ibv_device *dev)
             my_obj = my_obj->parent;
         }
         if (NULL != my_obj) {
+            opal_output_verbose(5, opal_btl_base_framework.framework_output,
+                                "my_obj->logical_index=%d", my_obj->logical_index);
             /* Distance may be asymetrical, so calculate both of them
                and take the max */
             a = hwloc_distances->latency[my_obj->logical_index +
@@ -2456,7 +2444,6 @@ static float get_ib_dev_distance(struct ibv_device *dev)
     if (NULL != my_cpuset) {
         hwloc_bitmap_free(my_cpuset);
     }
-#endif
 
     return distance;
 }
@@ -2472,15 +2459,18 @@ sort_devs_by_distance(struct ibv_device **ib_devs, int count)
 
     for (i = 0; i < count; i++) {
         devs[i].ib_dev = ib_devs[i];
+        opal_output_verbose(5, opal_btl_base_framework.framework_output,
+                            "Checking distance from this process to device=%s", ibv_get_device_name(ib_devs[i]));
         /* If we're not bound, just assume that the device is close. */
         devs[i].distance = 0;
-#if OPAL_HAVE_HWLOC
         if (opal_process_info.cpuset) {
             /* If this process is bound to one or more PUs, we can get
                an accurate distance. */
             devs[i].distance = get_ib_dev_distance(ib_devs[i]);
         }
-#endif
+        opal_output_verbose(5, opal_btl_base_framework.framework_output,
+                            "Process is %s: distance to device is %f",
+                            (opal_process_info.cpuset ? "bound" : "not bound"), devs[i].distance);
     }
 
     qsort(devs, count, sizeof(struct dev_distance), compare_distance);
@@ -2534,12 +2524,6 @@ btl_openib_component_init(int *num_btl_modules,
         malloc_hook_set = true;
     }
 #endif
-    /* Currently refuse to run if MPI_THREAD_MULTIPLE is enabled */
-    if (enable_mpi_threads && !mca_btl_base_thread_multiple_override) {
-        opal_output_verbose(5, opal_btl_base_framework.framework_output,
-                            "btl:openib: MPI_THREAD_MULTIPLE not suppported; skipping this component");
-        goto no_btls;
-    }
 
     /* Per https://svn.open-mpi.org/trac/ompi/ticket/1305, check to
        see if $sysfsdir/class/infiniband exists.  If it does not,
@@ -2552,11 +2536,6 @@ btl_openib_component_init(int *num_btl_modules,
 
     /* Read in INI files with device-specific parameters */
     if (OPAL_SUCCESS != (ret = opal_btl_openib_ini_init())) {
-        goto no_btls;
-    }
-
-    /* Initialize FD listening */
-    if (OPAL_SUCCESS != opal_btl_openib_fd_init()) {
         goto no_btls;
     }
 
@@ -2734,7 +2713,7 @@ btl_openib_component_init(int *num_btl_modules,
 
     OBJ_CONSTRUCT(&btl_list, opal_list_t);
     OBJ_CONSTRUCT(&mca_btl_openib_component.ib_lock, opal_mutex_t);
-    mca_btl_openib_component.async_thread = 0;
+
     distance = dev_sorted[0].distance;
     for (found = false, i = 0;
          i < num_devs && (-1 == mca_btl_openib_component.ib_max_btls ||
@@ -3918,3 +3897,42 @@ int mca_btl_openib_post_srr(mca_btl_openib_module_t* openib_btl, const int qp)
     return OPAL_ERROR;
 }
 
+
+struct mca_btl_openib_event_t {
+    opal_event_t super;
+    void *(*fn)(void *);
+    void *arg;
+    opal_event_t *event;
+};
+
+typedef struct mca_btl_openib_event_t mca_btl_openib_event_t;
+
+static void *mca_btl_openib_run_once_cb (int fd, int flags, void *context)
+{
+    mca_btl_openib_event_t *event = (mca_btl_openib_event_t *) context;
+    void *ret;
+
+    ret = event->fn (event->arg);
+    opal_event_del (&event->super);
+    free (event);
+    return ret;
+}
+
+int mca_btl_openib_run_in_main (void *(*fn)(void *), void *arg)
+{
+    mca_btl_openib_event_t *event = malloc (sizeof (mca_btl_openib_event_t));
+
+    if (OPAL_UNLIKELY(NULL == event)) {
+        return OPAL_ERR_OUT_OF_RESOURCE;
+    }
+
+    event->fn = fn;
+    event->arg = arg;
+
+    opal_event_set (opal_sync_event_base, &event->super, -1, OPAL_EV_READ,
+                    mca_btl_openib_run_once_cb, event);
+
+    opal_event_active (&event->super, OPAL_EV_READ, 1);
+
+    return OPAL_SUCCESS;
+}

@@ -12,6 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,12 +30,11 @@
 #include "ompi/mca/io/base/base.h"
 #include "ompi/file/file.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Register_datarep = PMPI_Register_datarep
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Register_datarep PMPI_Register_datarep
 #endif
 
 static const char FUNC_NAME[] = "MPI_Register_datarep";
@@ -68,8 +69,7 @@ int MPI_Register_datarep(const char *datarep,
     OPAL_CR_ENTER_LIBRARY();
 
     /* Call the back-end io component function */
-    /* XXX -- CONST -- do not cast away const -- update mca/io */
-    rc = mca_io_base_register_datarep((char *) datarep, read_conversion_fn,
+    rc = mca_io_base_register_datarep(datarep, read_conversion_fn,
                                       write_conversion_fn,
                                       dtype_file_extent_fn,
                                       extra_state);

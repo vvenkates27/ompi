@@ -13,6 +13,8 @@
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/op/op.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Scan = PMPI_Scan
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Scan PMPI_Scan
 #endif
 
 static const char FUNC_NAME[] = "MPI_Scan";
@@ -101,8 +102,7 @@ int MPI_Scan(const void *sendbuf, void *recvbuf, int count,
     /* Call the coll component to actually perform the allgather */
 
     OBJ_RETAIN(op);
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_scan((void *) sendbuf, recvbuf, count,
+    err = comm->c_coll.coll_scan(sendbuf, recvbuf, count,
                                  datatype, op, comm,
                                  comm->c_coll.coll_scan_module);
     OBJ_RELEASE(op);

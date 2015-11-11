@@ -7,6 +7,8 @@
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -71,6 +73,7 @@ struct ompi_datatype_t {
 
     void*              args;                     /**< Data description for the user */
     void*              packed_description;       /**< Packed description of the datatype */
+    uint64_t           pml_data;                 /**< PML-specific information */
     /* --- cacheline 6 boundary (384 bytes) --- */
     char               name[MPI_MAX_OBJECT_NAME];/**< Externally visible name */
     /* --- cacheline 7 boundary (448 bytes) --- */
@@ -283,7 +286,7 @@ OMPI_DECLSPEC const ompi_datatype_t* ompi_datatype_match_size( int size, uint16_
 /*
  *
  */
-OMPI_DECLSPEC int32_t ompi_datatype_sndrcv( void *sbuf, int32_t scount, const ompi_datatype_t* sdtype,
+OMPI_DECLSPEC int32_t ompi_datatype_sndrcv( const void *sbuf, int32_t scount, const ompi_datatype_t* sdtype,
                                             void *rbuf, int32_t rcount, const ompi_datatype_t* rdtype);
 
 /*

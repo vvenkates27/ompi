@@ -13,6 +13,8 @@
  * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,12 +31,11 @@
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Igatherv = PMPI_Igatherv
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Igatherv PMPI_Igatherv
 #endif
 
 static const char FUNC_NAME[] = "MPI_Igatherv";
@@ -191,9 +192,8 @@ int MPI_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     OPAL_CR_ENTER_LIBRARY();
 
     /* Invoke the coll component to perform the back-end operation */
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_igatherv((void *) sendbuf, sendcount, sendtype, recvbuf,
-                                     (int *) recvcounts, (int *) displs, recvtype,
+    err = comm->c_coll.coll_igatherv(sendbuf, sendcount, sendtype, recvbuf,
+                                     recvcounts, displs, recvtype,
                                      root, comm, request, comm->c_coll.coll_igatherv_module);
     OMPI_ERRHANDLER_RETURN(err, comm, err, FUNC_NAME);
 }

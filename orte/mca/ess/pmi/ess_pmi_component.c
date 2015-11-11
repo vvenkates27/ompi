@@ -71,8 +71,8 @@ static int pmi_component_query(mca_base_module_t **module, int *priority)
 
     /* all APPS must use pmix */
     if (ORTE_PROC_IS_APP) {
-        /* open and setup pmix */
         if (NULL == opal_pmix.initialized) {
+            /* open and setup pmix */
             if (OPAL_SUCCESS != (ret = mca_base_framework_open(&opal_pmix_base_framework, 0))) {
                 ORTE_ERROR_LOG(ret);
                 *priority = -1;
@@ -87,11 +87,8 @@ static int pmi_component_query(mca_base_module_t **module, int *priority)
                 return ret;
             }
         }
-        if (!opal_pmix.initialized()) {
-            /* we may have everything setup, but we are not
-             * in a PMIx environment and so we need to disqualify
-             * ourselves - we are likely a singleton and will
-             * pick things up from there */
+        if (!opal_pmix.initialized() && (OPAL_SUCCESS != (ret = opal_pmix.init()))) {
+            /* we cannot be in a PMI environment */
             *priority = -1;
             *module = NULL;
             return ORTE_ERROR;

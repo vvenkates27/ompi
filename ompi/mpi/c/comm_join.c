@@ -11,6 +11,9 @@
  *                         All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, LLC.
  *                         All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,19 +37,21 @@
 #include <netinet/in.h>
 #endif
 
+#include "opal/util/show_help.h"
+
 #include "ompi/mpi/c/bindings.h"
 #include "ompi/runtime/params.h"
+#include "ompi/runtime/mpiruntime.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/errhandler/errhandler.h"
-#include "ompi/mca/dpm/dpm.h"
+#include "ompi/dpm/dpm.h"
 
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Comm_join = PMPI_Comm_join
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Comm_join PMPI_Comm_join
 #endif
 
 static const char FUNC_NAME[] = "MPI_Comm_join";
@@ -59,7 +64,6 @@ int MPI_Comm_join(int fd, MPI_Comm *intercomm)
     int rc;
     uint32_t len, rlen, llen, lrlen;
     int send_first=0;
-    char *rport;
     ompi_process_name_t rname, tmp_name;
 
     ompi_communicator_t *newcomp;
@@ -74,13 +78,12 @@ int MPI_Comm_join(int fd, MPI_Comm *intercomm)
         }
     }
 
-    OPAL_CR_ENTER_LIBRARY();
-
-    /* open a port using the specified tag */
-    if (OMPI_SUCCESS != (rc = ompi_dpm.open_port(port_name, OMPI_COMM_JOIN_TAG))) {
-        OPAL_CR_EXIT_LIBRARY();
-        return rc;
+    if (!ompi_mpi_dynamics_is_enabled(FUNC_NAME)) {
+        return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, OMPI_ERR_NOT_SUPPORTED,
+                                      FUNC_NAME);
     }
+
+    OPAL_CR_ENTER_LIBRARY();
 
     /* send my process name */
     tmp_name = *OMPI_PROC_MY_NAME;
@@ -107,36 +110,48 @@ int MPI_Comm_join(int fd, MPI_Comm *intercomm)
         send_first = true;
     }
 
-    /* sendrecv port-name through the socket connection.
-       Need to determine somehow how to avoid a potential deadlock
-       here. */
-    llen   = (uint32_t)(strlen(port_name)+1);
-    len    = htonl(llen);
-
-    ompi_socket_send( fd, (char *) &len, sizeof(uint32_t));
-    ompi_socket_recv (fd, (char *) &rlen, sizeof(uint32_t));
-
-    lrlen  = ntohl(rlen);
-    rport = (char *) malloc (lrlen);
-    if ( NULL == rport ) {
-        *intercomm = MPI_COMM_NULL;
-        OPAL_CR_EXIT_LIBRARY();
-        return MPI_ERR_INTERN;
-    }
+    /* ensure the port name is NULL terminated */
+    memset(port_name, 0, MPI_MAX_PORT_NAME);
 
     /* Assumption: socket_send should not block, even if the socket
        is not configured to be non-blocking, because the message length are
        so short. */
-    ompi_socket_send (fd, port_name, llen);
-    ompi_socket_recv (fd, rport, lrlen);
 
-    /* use the port we received to connect/accept */
-    rc = ompi_dpm.connect_accept (MPI_COMM_SELF, 0, rport, send_first, &newcomp);
+    /* we will only use the send_first proc's port name,
+     * so pass it to the recv_first participant */
+    if (send_first) {
+        /* open a port */
+        if (OMPI_SUCCESS != (rc = ompi_dpm_open_port(port_name))) {
+            goto error;
+        }
+        llen   = (uint32_t)(strlen(port_name)+1);
+        len    = htonl(llen);
+        ompi_socket_send( fd, (char *) &len, sizeof(uint32_t));
+        ompi_socket_send (fd, port_name, llen);
+    } else {
+        ompi_socket_recv (fd, (char *) &rlen, sizeof(uint32_t));
+        lrlen  = ntohl(rlen);
+        ompi_socket_recv (fd, port_name, lrlen);
+    }
 
+    /* use the port to connect/accept */
+    rc = ompi_dpm_connect_accept (MPI_COMM_SELF, 0, port_name, send_first, &newcomp);
 
-    free ( rport );
+    OPAL_CR_EXIT_LIBRARY();
 
     *intercomm = newcomp;
+
+ error:
+    OPAL_CR_EXIT_LIBRARY();
+
+    if (OPAL_ERR_NOT_SUPPORTED == rc) {
+        opal_show_help("help-mpi-api.txt",
+                       "MPI function not supported",
+                       true,
+                       FUNC_NAME,
+                       "Underlying runtime environment does not support join functionality");
+    }
+
     OMPI_ERRHANDLER_RETURN (rc, MPI_COMM_SELF, rc, FUNC_NAME);
 }
 

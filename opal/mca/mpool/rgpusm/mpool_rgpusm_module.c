@@ -14,7 +14,7 @@
  * Copyright (c) 2006      Voltaire. All rights reserved.
  * Copyright (c) 2007      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2010      IBM Corporation.  All rights reserved.
- * Copyright (c) 2012-2014 NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2012-2015 NVIDIA Corporation.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
  *                         reserved.
  *
@@ -105,6 +105,8 @@ static inline bool mca_mpool_rgpusm_deregister_lru (mca_mpool_base_module_t *mpo
     old_reg = (mca_mpool_base_registration_t*)
         opal_list_remove_first (&mpool_rgpusm->lru_list);
     if (NULL == old_reg) {
+        opal_output_verbose(10, mca_mpool_rgpusm_component.output,
+                            "RGPUSM: The LRU list is empty. There is nothing to deregister");
         return false;
     }
 
@@ -121,6 +123,9 @@ static inline bool mca_mpool_rgpusm_deregister_lru (mca_mpool_base_module_t *mpo
        the deregistration fails to occur as we no longer have
        a reference to it. Is this possible? */
     if (OPAL_SUCCESS != rc) {
+        opal_output_verbose(10, mca_mpool_rgpusm_component.output,
+                            "RGPUSM: Failed to deregister the memory addr=%p, size=%d",
+                            old_reg->base, (int)(old_reg->bound - old_reg->base + 1));
         return false;
     }
 
@@ -175,9 +180,9 @@ void mca_mpool_rgpusm_module_init(mca_mpool_rgpusm_module_t* mpool)
  * from the remote memory.  It uses the addr and size of the remote
  * memory for caching the registration.
  */
-int mca_mpool_rgpusm_register(mca_mpool_base_module_t *mpool, void *addr,
-                             size_t size, uint32_t flags,
-                             mca_mpool_base_registration_t **reg)
+int mca_mpool_rgpusm_register (mca_mpool_base_module_t *mpool, void *addr,
+                               size_t size, uint32_t flags, int32_t access_flags,
+                               mca_mpool_base_registration_t **reg)
 {
     mca_mpool_rgpusm_module_t *mpool_rgpusm = (mca_mpool_rgpusm_module_t*)mpool;
     mca_mpool_common_cuda_reg_t *rgpusm_reg;
@@ -401,12 +406,35 @@ int mca_mpool_rgpusm_register(mca_mpool_base_module_t *mpool, void *addr,
 
     opal_output_verbose(80, mca_mpool_rgpusm_component.output,
                         "RGPUSM: About to insert in rgpusm cache addr=%p, size=%d", addr, (int)size);
-    while((rc = mpool->rcache->rcache_insert(mpool->rcache, (mca_mpool_base_registration_t *)rgpusm_reg,
-             mca_mpool_rgpusm_component.rcache_size_limit)) ==
-            OPAL_ERR_TEMP_OUT_OF_RESOURCE) {
-        opal_output(-1, "No room in the cache - boot one out");
-        if (!mca_mpool_rgpusm_deregister_lru(mpool)) {
-            break;
+    rc = mpool->rcache->rcache_insert(mpool->rcache, (mca_mpool_base_registration_t *)rgpusm_reg,
+                                      mca_mpool_rgpusm_component.rcache_size_limit);
+    if (OPAL_ERR_TEMP_OUT_OF_RESOURCE == rc) {
+        opal_output_verbose(40, mca_mpool_rgpusm_component.output,
+                            "RGPUSM: No room in the cache - boot the first one out");
+        (void)mca_mpool_rgpusm_deregister_lru(mpool);
+        if (mca_mpool_rgpusm_component.empty_cache) {
+            int remNum = 1;
+            /* Empty out every registration from LRU until it is empty */
+            opal_output_verbose(40, mca_mpool_rgpusm_component.output,
+                                "RGPUSM: About to delete all the unused entries in the cache");
+            while (mca_mpool_rgpusm_deregister_lru(mpool)) {
+                remNum++;
+            }
+            opal_output_verbose(40, mca_mpool_rgpusm_component.output,
+                                "RGPUSM: Deleted and deregistered %d entries", remNum);
+            rc = mpool->rcache->rcache_insert(mpool->rcache, (mca_mpool_base_registration_t *)rgpusm_reg,
+                                              mca_mpool_rgpusm_component.rcache_size_limit);
+        } else {
+            /* Check for room after one removal. If not, remove another one until there is space */
+            while((rc = mpool->rcache->rcache_insert(mpool->rcache, (mca_mpool_base_registration_t *)rgpusm_reg,
+                                                     mca_mpool_rgpusm_component.rcache_size_limit)) ==
+                  OPAL_ERR_TEMP_OUT_OF_RESOURCE) {
+                opal_output_verbose(40, mca_mpool_rgpusm_component.output,
+                                    "RGPUSM: No room in the cache - boot one out");
+                if (!mca_mpool_rgpusm_deregister_lru(mpool)) {
+                    break;
+                }
+            }
         }
     }
 
@@ -419,6 +447,8 @@ int mca_mpool_rgpusm_register(mca_mpool_base_module_t *mpool, void *addr,
          * is MPI_ERR_OUT_OF_RESOURCES, but everything is stuck at
          * that point.  Therefore, just error out completely.
          */
+        opal_output_verbose(10, mca_mpool_rgpusm_component.output,
+                            "RGPUSM: Failed to register addr=%p, size=%d", addr, (int)size);
         return OPAL_ERROR;
     }
 
@@ -495,6 +525,9 @@ int mca_mpool_rgpusm_deregister(struct mca_mpool_base_module_t *mpool,
     {
         /* if leave_pinned is set don't deregister memory, but put it
          * on LRU list for future use */
+        opal_output_verbose(20, mca_mpool_rgpusm_component.output,
+                            "RGPUSM: Deregister: addr=%p, size=%d: cacheable and pinned, leave in cache, PUSH IN LRU",
+                            reg->base, (int)(reg->bound - reg->base + 1));
         opal_list_prepend(&mpool_rgpusm->lru_list, (opal_list_item_t*)reg);
     } else {
         /* Remove from rcache first */

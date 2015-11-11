@@ -6,6 +6,11 @@
  * Copyright (c) 2012-2013 Inria.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
  *
  */
 
@@ -19,12 +24,11 @@
 #include "ompi/mca/topo/topo.h"
 #include "ompi/mca/topo/base/base.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Dist_graph_create = PMPI_Dist_graph_create
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Dist_graph_create PMPI_Dist_graph_create
 #endif
 
 static const char FUNC_NAME[] = "MPI_Dist_graph_create";
@@ -83,9 +87,8 @@ int MPI_Dist_graph_create(MPI_Comm comm_old, int n, const int sources[],
         return OMPI_ERRHANDLER_INVOKE(comm_old, err, FUNC_NAME);
     }
 
-    /* XXX -- CONST -- do not cast away const -- update mca/topo */
-    err = topo->topo.dist_graph.dist_graph_create(topo, comm_old, n, (int *) sources, (int *) degrees,
-                                                  (int *) destinations, (int *) weights, info,
+    err = topo->topo.dist_graph.dist_graph_create(topo, comm_old, n, sources, degrees,
+                                                  destinations, weights, info,
                                                   reorder, newcomm);
     OMPI_ERRHANDLER_RETURN(err, comm_old, err, FUNC_NAME);
 }

@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2014 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -29,6 +29,13 @@
 #include "ompi/peruse/peruse-internal.h"
 #include "ompi/message/message.h"
 
+/**
+ * Single usage request. As we allow recursive calls to recv
+ * (from the request completion callback), we cannot rely on
+ * using a global request. Thus, once a recv acquires ownership
+ * this global request, it should set it to NULL to prevent
+ * the reuse until the first user completes.
+ */
 mca_pml_ob1_recv_request_t *mca_pml_ob1_recvreq = NULL;
 
 int mca_pml_ob1_irecv_init(void *addr,
@@ -96,15 +103,13 @@ int mca_pml_ob1_recv(void *addr,
 
 #if !OMPI_ENABLE_THREAD_MULTIPLE
     recvreq = mca_pml_ob1_recvreq;
+    mca_pml_ob1_recvreq = NULL;
     if( OPAL_UNLIKELY(NULL == recvreq) )
 #endif  /* !OMPI_ENABLE_THREAD_MULTIPLE */
         {
             MCA_PML_OB1_RECV_REQUEST_ALLOC(recvreq);
             if (NULL == recvreq)
                 return OMPI_ERR_TEMP_OUT_OF_RESOURCE;
-#if !OMPI_ENABLE_THREAD_MULTIPLE
-            mca_pml_ob1_recvreq = recvreq;
-#endif  /* !OMPI_ENABLE_THREAD_MULTIPLE */
         }
 
     MCA_PML_OB1_RECV_REQUEST_INIT(recvreq, addr, count, datatype,
@@ -126,7 +131,12 @@ int mca_pml_ob1_recv(void *addr,
 #if OMPI_ENABLE_THREAD_MULTIPLE
     MCA_PML_OB1_RECV_REQUEST_RETURN(recvreq);
 #else
-    mca_pml_ob1_recv_request_fini (recvreq);
+    if( NULL != mca_pml_ob1_recvreq ) {
+        MCA_PML_OB1_RECV_REQUEST_RETURN(recvreq);
+    } else {
+        mca_pml_ob1_recv_request_fini (recvreq);
+        mca_pml_ob1_recvreq = recvreq;
+    }
 #endif
 
     return rc;
@@ -146,7 +156,6 @@ mca_pml_ob1_imrecv( void *buf,
     int src, tag;
     ompi_communicator_t *comm;
     mca_pml_ob1_comm_proc_t* proc;
-    mca_pml_ob1_comm_t* ob1_comm;
     uint64_t seq;
 
     /* get the request from the message and the frag from the request
@@ -156,7 +165,6 @@ mca_pml_ob1_imrecv( void *buf,
     src = recvreq->req_recv.req_base.req_ompi.req_status.MPI_SOURCE;
     tag = recvreq->req_recv.req_base.req_ompi.req_status.MPI_TAG;
     comm = (*message)->comm;
-    ob1_comm = recvreq->req_recv.req_base.req_comm->c_pml_comm;
     seq = recvreq->req_recv.req_base.req_sequence;
 
     /* make the request a recv request again */
@@ -194,7 +202,7 @@ mca_pml_ob1_imrecv( void *buf,
     /* Note - sequence number already assigned */
     recvreq->req_recv.req_base.req_sequence = seq;
 
-    proc = &ob1_comm->procs[recvreq->req_recv.req_base.req_peer];
+    proc = mca_pml_ob1_peer_lookup (comm, recvreq->req_recv.req_base.req_peer);
     recvreq->req_recv.req_base.req_proc = proc->ompi_proc;
     prepare_recv_req_converter(recvreq);
 
@@ -241,7 +249,6 @@ mca_pml_ob1_mrecv( void *buf,
     int src, tag, rc;
     ompi_communicator_t *comm;
     mca_pml_ob1_comm_proc_t* proc;
-    mca_pml_ob1_comm_t* ob1_comm;
     uint64_t seq;
 
     /* get the request from the message and the frag from the request
@@ -252,7 +259,6 @@ mca_pml_ob1_mrecv( void *buf,
     src = recvreq->req_recv.req_base.req_ompi.req_status.MPI_SOURCE;
     tag = recvreq->req_recv.req_base.req_ompi.req_status.MPI_TAG;
     seq = recvreq->req_recv.req_base.req_sequence;
-    ob1_comm = recvreq->req_recv.req_base.req_comm->c_pml_comm;
 
     /* make the request a recv request again */
     /* The old request kept pointers to comm and the char datatype.
@@ -288,7 +294,7 @@ mca_pml_ob1_mrecv( void *buf,
     /* Note - sequence number already assigned */
     recvreq->req_recv.req_base.req_sequence = seq;
 
-    proc = &ob1_comm->procs[recvreq->req_recv.req_base.req_peer];
+    proc = mca_pml_ob1_peer_lookup (comm, recvreq->req_recv.req_base.req_peer);
     recvreq->req_recv.req_base.req_proc = proc->ompi_proc;
     prepare_recv_req_converter(recvreq);
 

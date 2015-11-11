@@ -1,6 +1,6 @@
 .\" -*- nroff -*-
 .\" Copyright 2013 Los Alamos National Security, LLC. All rights reserved.
-.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 .\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .\" $COPYRIGHT$
@@ -24,7 +24,8 @@ int MPI_Iscatter(const void *\fIsendbuf\fP, int\fI sendcount\fP, MPI_Datatype\fI
 .fi
 .SH Fortran Syntax
 .nf
-INCLUDE 'mpif.h'
+USE MPI
+! or the older form: INCLUDE 'mpif.h'
 MPI_SCATTER(\fISENDBUF, SENDCOUNT, SENDTYPE, RECVBUF, RECVCOUNT,
 		RECVTYPE, ROOT, COMM, IERROR\fP)
 	<type>	\fISENDBUF(*), RECVBUF(*)\fP
@@ -36,6 +37,29 @@ MPI_ISCATTER(\fISENDBUF, SENDCOUNT, SENDTYPE, RECVBUF, RECVCOUNT,
 	<type>	\fISENDBUF(*), RECVBUF(*)\fP
 	INTEGER	\fISENDCOUNT, SENDTYPE, RECVCOUNT, RECVTYPE, ROOT\fP
 	INTEGER	\fICOMM, REQUEST, IERROR\fP
+
+.fi
+.SH Fortran 2008 Syntax
+.nf
+USE mpi_f08
+MPI_Scatter(\fIsendbuf\fP, \fIsendcount\fP, \fIsendtype\fP, \fIrecvbuf\fP, \fIrecvcount\fP, \fIrecvtype\fP,
+		\fIroot\fP, \fIcomm\fP, \fIierror\fP)
+	TYPE(*), DIMENSION(..), INTENT(IN) :: \fIsendbuf\fP
+	TYPE(*), DIMENSION(..) :: \fIrecvbuf\fP
+	INTEGER, INTENT(IN) :: \fIsendcount\fP, \fIrecvcount\fP, \fIroot\fP
+	TYPE(MPI_Datatype), INTENT(IN) :: \fIsendtype\fP, \fIrecvtype\fP
+	TYPE(MPI_Comm), INTENT(IN) :: \fIcomm\fP
+	INTEGER, OPTIONAL, INTENT(OUT) :: \fIierror\fP
+
+MPI_Iscatter(\fIsendbuf\fP, \fIsendcount\fP, \fIsendtype\fP, \fIrecvbuf\fP, \fIrecvcount\fP, \fIrecvtype\fP,
+		\fIroot\fP, \fIcomm\fP, \fIrequest\fP, \fIierror\fP)
+	TYPE(*), DIMENSION(..), INTENT(IN), ASYNCHRONOUS :: \fIsendbuf\fP
+	TYPE(*), DIMENSION(..), ASYNCHRONOUS :: \fIrecvbuf\fP
+	INTEGER, INTENT(IN) :: \fIsendcount\fP, \fIrecvcount\fP, \fIroot\fP
+	TYPE(MPI_Datatype), INTENT(IN) :: \fIsendtype\fP, \fIrecvtype\fP
+	TYPE(MPI_Comm), INTENT(IN) :: \fIcomm\fP
+	TYPE(MPI_Request), INTENT(OUT) :: \fIrequest\fP
+	INTEGER, OPTIONAL, INTENT(OUT) :: \fIierror\fP
 
 .fi
 .SH C++ Syntax
@@ -144,7 +168,7 @@ sets of 100 ints from the root to each process in the group.
 .fi
 
 .SH USE OF IN-PLACE OPTION
-When the communicator is an intracommunicator, you can perform a gather operation in-place (the output buffer is used as the input buffer).  Use the variable MPI_IN_PLACE as the value of the root process \fIrecvbuf\fR.  In this case, \fIrecvcount\fR and \fIrecvtype\fR are ignored, and the root process sends no data to itself.
+When the communicator is an intracommunicator, you can perform a scatter operation in-place (the output buffer is used as the input buffer).  Use the variable MPI_IN_PLACE as the value of the root process \fIrecvbuf\fR.  In this case, \fIrecvcount\fR and \fIrecvtype\fR are ignored, and the root process sends no data to itself.
 .sp
 Note that MPI_IN_PLACE is a special kind of value; it has the same restrictions on its use as MPI_BOTTOM.
 .sp

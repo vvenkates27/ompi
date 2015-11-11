@@ -11,9 +11,11 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2010 Oracle and/or its affiliates.  All rights reserved
- * Copyright (c) 2013-2014 Intel, Inc. All rights reserved
+ * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -133,7 +135,7 @@ mca_btl_tcp_proc_t* mca_btl_tcp_proc_create(opal_proc_t* proc)
 
     /* lookup tcp parameters exported by this proc */
     OPAL_MODEX_RECV(rc, &mca_btl_tcp_component.super.btl_version,
-                    proc, (uint8_t**)&btl_proc->proc_addrs, &size);
+                    &proc->proc_name, (uint8_t**)&btl_proc->proc_addrs, &size);
     if(rc != OPAL_SUCCESS) {
         if(OPAL_ERR_NOT_FOUND != rc)
             BTL_ERROR(("opal_modex_recv: failed with return value=%d", rc));
@@ -738,6 +740,30 @@ mca_btl_tcp_proc_t* mca_btl_tcp_proc_lookup(const opal_process_name_t *name)
     opal_proc_table_get_value(&mca_btl_tcp_component.tcp_procs,
                               *name, (void**)&proc);
     OPAL_THREAD_UNLOCK(&mca_btl_tcp_component.tcp_lock);
+    if (OPAL_UNLIKELY(NULL == proc)) {
+        mca_btl_base_endpoint_t *endpoint;
+        opal_proc_t *opal_proc;
+
+        BTL_VERBOSE(("adding tcp proc for unknown peer {.jobid = 0x%x, .vpid = 0x%x}",
+                     name->jobid, name->vpid));
+
+        opal_proc = opal_proc_for_name (*name);
+        if (NULL == opal_proc) {
+            return NULL;
+        }
+
+        /* try adding this proc to each btl until */
+        for (int i = 0 ; i < (int)mca_btl_tcp_component.tcp_num_btls ; ++i) {
+            endpoint = NULL;
+            (void) mca_btl_tcp_add_procs (&mca_btl_tcp_component.tcp_btls[i]->super, 1, &opal_proc,
+                                          &endpoint, NULL);
+            if (NULL != endpoint && NULL == proc) {
+                /* get the proc and continue on (could probably just break here) */
+                proc = endpoint->endpoint_proc;
+            }
+        }
+    }
+
     return proc;
 }
 

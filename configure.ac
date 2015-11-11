@@ -3,7 +3,7 @@
 # Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
-# Copyright (c) 2004-2014 The University of Tennessee and The University
+# Copyright (c) 2004-2015 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
 # Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
@@ -480,14 +480,10 @@ fi
 if test "$WANT_WEAK_SYMBOLS" = "0"; then
     OPAL_C_HAVE_WEAK_SYMBOLS=0
 fi
-if test "$WANT_MPI_PROFILING" = "1"; then
-    if test "$OPAL_C_HAVE_WEAK_SYMBOLS" = "1"; then
-        OMPI_PROFILING_COMPILE_SEPARATELY=0
-    else
-        OMPI_PROFILING_COMPILE_SEPARATELY=1
-    fi
-else
+if test "$OPAL_C_HAVE_WEAK_SYMBOLS" = "1"; then
     OMPI_PROFILING_COMPILE_SEPARATELY=0
+else
+    OMPI_PROFILING_COMPILE_SEPARATELY=1
 fi
 
 # Check if we support the offsetof compiler directive
@@ -508,6 +504,9 @@ OPAL_CHECK_OFFSETOF
 # OPAL...?  Shrug.
 m4_ifdef([project_ompi], [OPAL_SETUP_CXX
                           OMPI_SETUP_CXX])
+# Used in Makefile.ompi-rules
+AM_CONDITIONAL(MAN_PAGE_BUILD_MPI_CXX_BINDINGS,
+               [test "$WANT_MPI_CXX_SUPPORT" = 1])
 
 ##################################
 # Only after setting up both
@@ -533,13 +532,7 @@ m4_ifdef([project_oshmem], [OSHMEM_SETUP_JAVA_BINDINGS])
 ##################################
 
 # Setup profiling bindings (if we're building the relevant projects).
-# Note that opal_wrapper.c has a hard-coded use of the
-# OMPI_ENABLE_MPI_PROFILING macro, so we need to define it (to 0) even
-# if we're not building the OMPI project.
-
-m4_ifdef([project_ompi], [OMPI_SETUP_MPI_PROFILING],
-                         [AC_DEFINE([OMPI_ENABLE_MPI_PROFILING], [0],
-                                    [We are not building OMPI, so no profiling])])
+m4_ifdef([project_ompi], [OMPI_SETUP_MPI_PROFILING])
 m4_ifdef([project_oshmem], [OSHMEM_SETUP_PROFILING])
 
 
@@ -557,7 +550,15 @@ OPAL_CONFIG_ASM
 # Fortran
 ##################################
 
+OMPI_BUILD_FORTRAN_BINDINGS=0
+
 m4_ifdef([project_ompi], [OMPI_SETUP_MPI_FORTRAN], [ompi_fortran_happy=0])
+
+# Used in Makefile.ompi-rules
+AM_CONDITIONAL(MAN_PAGE_BUILD_MPIFH_BINDINGS,
+              [test $OMPI_BUILD_FORTRAN_BINDINGS -gt $OMPI_FORTRAN_NO_BINDINGS])
+AM_CONDITIONAL(MAN_PAGE_BUILD_USEMPIF08_BINDINGS,
+              [test $OMPI_BUILD_FORTRAN_BINDINGS -ge $OMPI_FORTRAN_USEMPIF08_BINDINGS])
 
 AM_CONDITIONAL(OSHMEM_BUILD_FORTRAN_BINDINGS,
     [test "$enable_oshmem" = "yes" && \
@@ -1378,6 +1379,7 @@ AC_CONFIG_FILES([
     test/support/Makefile
     test/threads/Makefile
     test/util/Makefile
+    test/monitoring/Makefile
 ])
 AC_CONFIG_FILES([contrib/dist/mofed/debian/rules],
                 [chmod +x contrib/dist/mofed/debian/rules])

@@ -14,7 +14,8 @@
  * Copyright (c) 2012      Oak Ridge National Laboratory. All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
-
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,12 +33,11 @@
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Iallgather = PMPI_Iallgather
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Iallgather PMPI_Iallgather
 #endif
 
 static const char FUNC_NAME[] = "MPI_Iallgather";
@@ -84,7 +84,8 @@ int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
           err = MPI_ERR_TYPE;
         } else if (recvcount < 0) {
           err = MPI_ERR_COUNT;
-        } else if (MPI_IN_PLACE == recvbuf) {
+        } else if ((MPI_IN_PLACE == sendbuf && OMPI_COMM_IS_INTER(comm)) ||
+                   MPI_IN_PLACE == recvbuf) {
           return OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_ARG, FUNC_NAME);
         } else if (MPI_IN_PLACE != sendbuf) {
             OMPI_CHECK_DATATYPE_FOR_SEND(err, sendtype, sendcount);
@@ -95,8 +96,7 @@ int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     OPAL_CR_ENTER_LIBRARY();
 
     /* Invoke the coll component to perform the back-end operation */
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_iallgather((void *) sendbuf, sendcount, sendtype,
+    err = comm->c_coll.coll_iallgather(sendbuf, sendcount, sendtype,
                                        recvbuf, recvcount, recvtype, comm,
                                        request, comm->c_coll.coll_iallgather_module);
 

@@ -12,7 +12,7 @@
  * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -626,14 +626,12 @@ int orte_dt_unpack_map(opal_buffer_t *buffer, void *dest,
             ORTE_ERROR_LOG(rc);
             return rc;
         }
-#if OPAL_HAVE_HWLOC
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
                                                          &(maps[i]->binding), &n, OPAL_BINDING_POLICY))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
-#endif
         /* unpack the ppr */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
@@ -846,13 +844,18 @@ int orte_dt_unpack_attr(opal_buffer_t *buffer, void *dest, int32_t *num_vals,
                 return ret;
             }
             break;
-        case ORTE_VPID:
+        case OPAL_VPID:
             if (OPAL_SUCCESS != (ret = opal_dss_unpack_buffer(buffer, &ptr[i]->data.vpid, &m, ORTE_VPID))) {
                 return ret;
             }
             break;
-        case ORTE_JOBID:
+        case OPAL_JOBID:
             if (OPAL_SUCCESS != (ret = opal_dss_unpack_buffer(buffer, &ptr[i]->data.jobid, &m, ORTE_JOBID))) {
+                return ret;
+            }
+            break;
+        case OPAL_NAME:
+            if (OPAL_SUCCESS != (ret = opal_dss_unpack_buffer(buffer, &ptr[i]->data.name, &m, ORTE_NAME))) {
                 return ret;
             }
             break;

@@ -1,20 +1,22 @@
 /*
- *  Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
- *                          University Research and Technology
- *                          Corporation.  All rights reserved.
- *  Copyright (c) 2004-2005 The University of Tennessee and The University
- *                          of Tennessee Research Foundation.  All rights
- *                          reserved.
- *  Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
- *                          University of Stuttgart.  All rights reserved.
- *  Copyright (c) 2004-2005 The Regents of the University of California.
- *                          All rights reserved.
- *  Copyright (c) 2008-2015 University of Houston. All rights reserved.
- *  $COPYRIGHT$
+ * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
+ *                         University Research and Technology
+ *                         Corporation.  All rights reserved.
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
+ *                         University of Stuttgart.  All rights reserved.
+ * Copyright (c) 2004-2005 The Regents of the University of California.
+ *                         All rights reserved.
+ * Copyright (c) 2008-2015 University of Houston. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
+ * $COPYRIGHT$
  *
- *  Additional copyrights may follow
+ * Additional copyrights may follow
  *
- *  $HEADER$
+ * $HEADER$
  */
 
 #include "ompi_config.h"
@@ -39,7 +41,7 @@
 
 int
 mca_io_ompio_file_open (ompi_communicator_t *comm,
-                        char *filename,
+                        const char *filename,
                         int amode,
                         ompi_info_t *info,
                         ompi_file_t *fh)
@@ -54,13 +56,13 @@ mca_io_ompio_file_open (ompi_communicator_t *comm,
     }
 
 
+    /*save pointer back to the file_t structure */
+    data->ompio_fh.f_fh = fh;
 
     ret = ompio_io_ompio_file_open(comm,filename,amode,info,&data->ompio_fh,use_sharedfp);
 
     if ( OMPI_SUCCESS == ret ) {
         fh->f_flags |= OMPIO_FILE_IS_OPEN;
-        /*save pointer back to the file_t structure */
-        data->ompio_fh.f_fh = fh;
     }
 
 
@@ -71,7 +73,7 @@ mca_io_ompio_file_open (ompi_communicator_t *comm,
 
 int
 ompio_io_ompio_file_open (ompi_communicator_t *comm,
-                        char *filename,
+                        const char *filename,
                         int amode,
                         ompi_info_t *info,
                         mca_io_ompio_file_t *ompio_fh, bool use_sharedfp)
@@ -79,6 +81,9 @@ ompio_io_ompio_file_open (ompi_communicator_t *comm,
     int ret = OMPI_SUCCESS;
     int remote_arch;
 
+
+    ompio_fh->f_iov_type = MPI_DATATYPE_NULL;
+    ompio_fh->f_comm     = MPI_COMM_NULL;
 
     if ( ((amode&MPI_MODE_RDONLY)?1:0) + ((amode&MPI_MODE_RDWR)?1:0) +
 	 ((amode&MPI_MODE_WRONLY)?1:0) != 1 ) {
@@ -94,7 +99,6 @@ ompio_io_ompio_file_open (ompi_communicator_t *comm,
 	return MPI_ERR_AMODE;
     }
 
-    ompio_fh->f_iov_type = MPI_DATATYPE_NULL;
     ompio_fh->f_rank     = ompi_comm_rank (comm);
     ompio_fh->f_size     = ompi_comm_size (comm);
     remote_arch = opal_local_arch;
@@ -126,8 +130,8 @@ ompio_io_ompio_file_open (ompi_communicator_t *comm,
     ompio_fh->f_split_coll_in_use = false;
 
     /*Initialize the print_queues queues here!*/
-    coll_write_time = (print_queue *) malloc (sizeof(print_queue));
-    coll_read_time = (print_queue *) malloc (sizeof(print_queue));
+    coll_write_time = (mca_io_ompio_print_queue *) malloc (sizeof(mca_io_ompio_print_queue));
+    coll_read_time = (mca_io_ompio_print_queue *) malloc (sizeof(mca_io_ompio_print_queue));
 
     ompi_io_ompio_initialize_print_queue(coll_write_time);
     ompi_io_ompio_initialize_print_queue(coll_read_time);
@@ -319,14 +323,27 @@ ompio_io_ompio_file_close (mca_io_ompio_file_t *ompio_fh)
     if( NULL != ompio_fh->f_sharedfp ){
         ret = ompio_fh->f_sharedfp->sharedfp_file_close(ompio_fh);
     }
-    ret = ompio_fh->f_fs->fs_file_close (ompio_fh);
+    if ( NULL != ompio_fh->f_fs ) {
+	/* The pointer might not be set if file_close() is
+	** called from the file destructor in case of an error
+	** during file_open()
+	*/
+	ret = ompio_fh->f_fs->fs_file_close (ompio_fh);
+    }
     if ( delete_flag && 0 == ompio_fh->f_rank ) {
         mca_io_ompio_file_delete ( ompio_fh->f_filename, MPI_INFO_NULL );
     }
 
-    mca_fs_base_file_unselect (ompio_fh);
-    mca_fbtl_base_file_unselect (ompio_fh);
-    mca_fcoll_base_file_unselect (ompio_fh);
+    if ( NULL != ompio_fh->f_fs ) {
+	mca_fs_base_file_unselect (ompio_fh);
+    }
+    if ( NULL != ompio_fh->f_fbtl ) {
+	mca_fbtl_base_file_unselect (ompio_fh);
+    }
+
+    if ( NULL != ompio_fh->f_fcoll ) {
+	mca_fcoll_base_file_unselect (ompio_fh);
+    }
     if ( NULL != ompio_fh->f_sharedfp)  {
 	mca_sharedfp_base_file_unselect (ompio_fh);
     }
@@ -365,6 +382,18 @@ ompio_io_ompio_file_close (mca_io_ompio_file_t *ompio_fh)
         ompi_datatype_destroy (&ompio_fh->f_iov_type);
     }
 
+    if ( MPI_DATATYPE_NULL != ompio_fh->f_etype ) {
+	ompi_datatype_destroy (&ompio_fh->f_etype);
+    }
+    if ( MPI_DATATYPE_NULL != ompio_fh->f_filetype ){
+	ompi_datatype_destroy (&ompio_fh->f_filetype);
+    }
+
+    if ( MPI_DATATYPE_NULL != ompio_fh->f_orig_filetype ){
+	ompi_datatype_destroy (&ompio_fh->f_orig_filetype);
+    }
+
+
     if (MPI_COMM_NULL != ompio_fh->f_comm && (ompio_fh->f_flags & OMPIO_SHAREDFP_IS_SET) )  {
         ompi_comm_free (&ompio_fh->f_comm);
     }
@@ -372,15 +401,16 @@ ompio_io_ompio_file_close (mca_io_ompio_file_t *ompio_fh)
     return ret;
 }
 
-int mca_io_ompio_file_delete (char *filename,
+int mca_io_ompio_file_delete (const char *filename,
                               struct ompi_info_t *info)
 {
     int ret = OMPI_SUCCESS;
 
     ret = unlink(filename);
 
-    if (0 > ret) {
-        return OMPI_ERROR;
+    if (0 > ret && ENOENT != errno ) {
+	opal_output (1, "errno = %d %s\n", errno, strerror(errno));
+        return MPI_ERR_ACCESS;
     }
 
     return OMPI_SUCCESS;

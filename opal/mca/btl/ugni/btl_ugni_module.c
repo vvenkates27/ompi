@@ -91,6 +91,7 @@ mca_btl_ugni_module_init (mca_btl_ugni_module_t *ugni_module,
     OBJ_CONSTRUCT(&ugni_module->pending_smsg_frags_bb, opal_pointer_array_t);
     OBJ_CONSTRUCT(&ugni_module->ep_wait_list_lock,opal_mutex_t);
     OBJ_CONSTRUCT(&ugni_module->ep_wait_list, opal_list_t);
+    OBJ_CONSTRUCT(&ugni_module->endpoint_lock, opal_mutex_t);
     OBJ_CONSTRUCT(&ugni_module->endpoints, opal_pointer_array_t);
     OBJ_CONSTRUCT(&ugni_module->id_to_endpoint, opal_hash_table_t);
     OBJ_CONSTRUCT(&ugni_module->smsg_mboxes, opal_free_list_t);
@@ -208,6 +209,7 @@ mca_btl_ugni_module_finalize (struct mca_btl_base_module_t *btl)
     OBJ_DESTRUCT(&ugni_module->smsg_mboxes);
     OBJ_DESTRUCT(&ugni_module->pending_smsg_frags_bb);
     OBJ_DESTRUCT(&ugni_module->id_to_endpoint);
+    OBJ_DESTRUCT(&ugni_module->endpoint_lock);
     OBJ_DESTRUCT(&ugni_module->endpoints);
 
     OBJ_DESTRUCT(&ugni_module->eager_get_pending);
@@ -302,9 +304,10 @@ mca_btl_ugni_register_mem (mca_btl_base_module_t *btl, mca_btl_base_endpoint_t *
                            size_t size, uint32_t flags)
 {
     mca_btl_ugni_reg_t *reg;
+    int access_flags = flags & MCA_BTL_REG_FLAG_ACCESS_ANY;
     int rc;
 
-    rc = btl->btl_mpool->mpool_register(btl->btl_mpool, base, size, 0,
+    rc = btl->btl_mpool->mpool_register(btl->btl_mpool, base, size, 0, access_flags,
                                         (mca_mpool_base_registration_t **) &reg);
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
         return NULL;

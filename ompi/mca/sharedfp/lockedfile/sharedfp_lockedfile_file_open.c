@@ -9,7 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2013      University of Houston. All rights reserved.
+ * Copyright (c) 2013-2015 University of Houston. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +34,7 @@
 #include <fcntl.h>
 
 int mca_sharedfp_lockedfile_file_open (struct ompi_communicator_t *comm,
-				       char* filename,
+				       const char* filename,
 				       int amode,
 				       struct ompi_info_t *info,
 				       mca_io_ompio_file_t *fh)
@@ -42,7 +44,8 @@ int mca_sharedfp_lockedfile_file_open (struct ompi_communicator_t *comm,
     int handle, rank;
     struct mca_sharedfp_lockedfile_data * module_data = NULL;
     struct mca_sharedfp_base_data_t* sh;
-    mca_io_ompio_file_t * shfileHandle;
+    mca_io_ompio_file_t * shfileHandle, *ompio_fh;
+    mca_io_ompio_data_t *data;
 
     /*------------------------------------------------------------*/
     /*Open the same file again without shared file pointer support*/
@@ -53,11 +56,23 @@ int mca_sharedfp_lockedfile_file_open (struct ompi_communicator_t *comm,
         opal_output(0, "mca_sharedfp_lockedfile_file_open: Error during file open\n");
         return err;
     }
+    shfileHandle->f_fh = fh->f_fh;
+    data = (mca_io_ompio_data_t *) fh->f_fh->f_io_selected_data;
+    ompio_fh = &data->ompio_fh;
+
+    err = mca_io_ompio_set_view_internal (shfileHandle,
+                                          ompio_fh->f_disp,
+                                          ompio_fh->f_etype,
+                                          ompio_fh->f_orig_filetype,
+                                          ompio_fh->f_datarep,
+                                          MPI_INFO_NULL);
+
 
     /*Memory is allocated here for the sh structure*/
     sh = (struct mca_sharedfp_base_data_t*)malloc(sizeof(struct mca_sharedfp_base_data_t));
     if ( NULL == sh){
         opal_output(0, "mca_sharedfp_lockedfile_file_open: Error, unable to malloc f_sharedfp_ptr struct\n");
+	free ( shfileHandle);
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
     /*Populate the sh file structure based on the implementation*/
@@ -70,13 +85,17 @@ int mca_sharedfp_lockedfile_file_open (struct ompi_communicator_t *comm,
 
     /*Open a new file which will maintain the pointer for this file open*/
     if ( mca_sharedfp_lockedfile_verbose ) {
-	printf("mca_sharedfp_lockedfile_file_open: open locked file.\n");
+        opal_output(ompi_sharedfp_base_framework.framework_output,
+                    "mca_sharedfp_lockedfile_file_open: open locked file.\n");
     }
 
 
     module_data = (struct mca_sharedfp_lockedfile_data*)malloc(sizeof(struct mca_sharedfp_lockedfile_data));
     if ( NULL == module_data ) {
-        printf("mca_sharedfp_lockedfile_file_open: Error, unable to malloc lockedfile_data struct\n");
+        opal_output(ompi_sharedfp_base_framework.framework_output,
+                    "mca_sharedfp_lockedfile_file_open: Error, unable to malloc lockedfile_data struct\n");
+	free (shfileHandle);
+	free (sh);
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
@@ -100,7 +119,9 @@ int mca_sharedfp_lockedfile_file_open (struct ompi_communicator_t *comm,
 
     handle = open ( lockedfilename, O_RDWR, 0644  );
     if ( -1 == handle ) {
-        printf("[%d]mca_sharedfp_lockedfile_file_open: Error during file open\n", rank);
+        opal_output(0, "[%d]mca_sharedfp_lockedfile_file_open: Error during file open\n", rank);
+	free (shfileHandle);
+	free (sh);
 	free(module_data);
         return OMPI_ERROR;
     }
@@ -127,7 +148,7 @@ int mca_sharedfp_lockedfile_file_close (mca_io_ompio_file_t *fh)
     if ( fh->f_sharedfp_data==NULL){
 	/* Can happen with lazy_open being set */
 	if ( mca_sharedfp_lockedfile_verbose ) {
-	    printf("sharedfp_lockedfile_file_close - shared file pointer structure not initialized\n");
+	    opal_output(0, "sharedfp_lockedfile_file_close - shared file pointer structure not initialized\n");
 	}
         return OMPI_SUCCESS;
     }

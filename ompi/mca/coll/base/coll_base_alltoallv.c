@@ -14,7 +14,7 @@
  * Copyright (c) 2013      Los Alamos National Security, LLC. All Rights
  *                         reserved.
  * Copyright (c) 2013      FUJITSU LIMITED.  All rights reserved.
- * Copyright (c) 2014      Research Organization for Information Science
+ * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
@@ -37,7 +37,7 @@
 #include "coll_base_util.h"
 
 int
-mca_coll_base_alltoallv_intra_basic_inplace(void *rbuf, const int *rcounts, const int *rdisps,
+mca_coll_base_alltoallv_intra_basic_inplace(const void *rbuf, const int *rcounts, const int *rdisps,
                                              struct ompi_datatype_t *rdtype,
                                              struct ompi_communicator_t *comm,
                                              mca_coll_base_module_t *module)
@@ -123,16 +123,18 @@ mca_coll_base_alltoallv_intra_basic_inplace(void *rbuf, const int *rcounts, cons
  error_hndl:
     /* Free the temporary buffer */
     free (tmp_buffer);
+    if( MPI_SUCCESS != err ) {
+        ompi_coll_base_free_reqs(base_module->base_data->mcct_reqs, 2 );
+    }
 
     /* All done */
-
     return err;
 }
 
 int
-ompi_coll_base_alltoallv_intra_pairwise(void *sbuf, int *scounts, int *sdisps,
+ompi_coll_base_alltoallv_intra_pairwise(const void *sbuf, const int *scounts, const int *sdisps,
                                          struct ompi_datatype_t *sdtype,
-                                         void* rbuf, int *rcounts, int *rdisps,
+                                         void* rbuf, const int *rcounts, const int *rdisps,
                                          struct ompi_datatype_t *rdtype,
                                          struct ompi_communicator_t *comm,
                                          mca_coll_base_module_t *module)
@@ -193,9 +195,9 @@ ompi_coll_base_alltoallv_intra_pairwise(void *sbuf, int *scounts, int *sdisps,
  * differently and so will not have to duplicate code.
  */
 int
-ompi_coll_base_alltoallv_intra_basic_linear(void *sbuf, int *scounts, int *sdisps,
+ompi_coll_base_alltoallv_intra_basic_linear(const void *sbuf, const int *scounts, const int *sdisps,
                                             struct ompi_datatype_t *sdtype,
-                                            void *rbuf, int *rcounts, int *rdisps,
+                                            void *rbuf, const int *rcounts, const int *rdisps,
                                             struct ompi_datatype_t *rdtype,
                                             struct ompi_communicator_t *comm,
                                             mca_coll_base_module_t *module)
@@ -253,8 +255,7 @@ ompi_coll_base_alltoallv_intra_basic_linear(void *sbuf, int *scounts, int *sdisp
                                       preq++));
         ++nreqs;
         if (MPI_SUCCESS != err) {
-            ompi_coll_base_free_reqs(data->mcct_reqs, nreqs);
-            return err;
+            goto err_hndl;
         }
     }
 
@@ -271,8 +272,7 @@ ompi_coll_base_alltoallv_intra_basic_linear(void *sbuf, int *scounts, int *sdisp
                                       preq++));
         ++nreqs;
         if (MPI_SUCCESS != err) {
-            ompi_coll_base_free_reqs(data->mcct_reqs, nreqs);
-            return err;
+            goto err_hndl;
         }
     }
 
@@ -287,8 +287,8 @@ ompi_coll_base_alltoallv_intra_basic_linear(void *sbuf, int *scounts, int *sdisp
      * error after we free everything. */
     err = ompi_request_wait_all(nreqs, data->mcct_reqs,
                                 MPI_STATUSES_IGNORE);
-
-    /* Free the requests. */
+ err_hndl:
+    /* Free the requests in all cases as they are persistent */
     ompi_coll_base_free_reqs(data->mcct_reqs, nreqs);
 
     return err;

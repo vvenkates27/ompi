@@ -58,9 +58,11 @@ typedef uint32_t orte_proc_type_t;
 #define ORTE_PROC_APP           0x0030
 #define ORTE_PROC_CM            0x0040
 #define ORTE_PROC_AGGREGATOR    0x0080
+#define ORTE_PROC_DVM           0x0102   // DVM + daemon
 #define ORTE_PROC_IOF_ENDPT     0x1000
 #define ORTE_PROC_SCHEDULER     0x2000
-#define ORTE_PROC_MASTER        0x4000
+#define ORTE_PROC_MASTER_ACTUAL 0x4000
+#define ORTE_PROC_MASTER        (ORTE_PROC_MASTER_ACTUAL + ORTE_PROC_HNP)
 
 #define ORTE_PROC_IS_SINGLETON      (ORTE_PROC_SINGLETON & orte_process_info.proc_type)
 #define ORTE_PROC_IS_DAEMON         (ORTE_PROC_DAEMON & orte_process_info.proc_type)
@@ -71,9 +73,10 @@ typedef uint32_t orte_proc_type_t;
 #define ORTE_PROC_IS_APP            (ORTE_PROC_APP & orte_process_info.proc_type)
 #define ORTE_PROC_IS_CM             (ORTE_PROC_CM & orte_process_info.proc_type)
 #define ORTE_PROC_IS_AGGREGATOR     (ORTE_PROC_AGGREGATOR & orte_process_info.proc_type)
+#define ORTE_PROC_IS_DVM            (ORTE_PROC_DVM & orte_process_info.proc_type)
 #define ORTE_PROC_IS_IOF_ENDPT      (ORTE_PROC_IOF_ENDPT & orte_process_info.proc_type)
 #define ORTE_PROC_IS_SCHEDULER      (ORTE_PROC_SCHEDULER & orte_process_info.proc_type)
-#define ORTE_PROC_IS_MASTER         (ORTE_PROC_MASTER & orte_process_info.proc_type)
+#define ORTE_PROC_IS_MASTER         (ORTE_PROC_MASTER_ACTUAL & orte_process_info.proc_type)
 
 
 /**
@@ -124,9 +127,7 @@ struct orte_proc_info_t {
     char *sock_stdin;                   /**< Path name to temp file for stdin. */
     char *sock_stdout;                  /**< Path name to temp file for stdout. */
     char *sock_stderr;                  /**< Path name to temp file for stderr. */
-#if OPAL_HAVE_HWLOC
     char *cpuset;                       /**< String-representation of bitmap where we are bound */
-#endif
     int app_rank;                        /**< rank within my app_context */
     orte_vpid_t my_hostid;               /** identifies the local host for a coprocessor */
 };

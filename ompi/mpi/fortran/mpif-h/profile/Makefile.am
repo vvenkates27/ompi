@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2009-2014 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2011-2013 Inria.  All rights reserved.
 # Copyright (c) 2011-2013 Universite Bordeaux 1
 # Copyright (c) 2013-2014 Los Alamos National Security, LLC. All rights
@@ -26,14 +26,10 @@
 
 include $(top_srcdir)/Makefile.ompi-rules
 
-#
-# OMPI_PROFILING_DEFINES flag is enabled when we want our MPI_* symbols
-# to be replaced by PMPI_*. In other words, this flag decides
-# whether "profile/defines.h" is included or not. "profile/defines.h"
-# replaces all MPI_* symbols with PMPI_* symbols. In this directory
-# we definately need it to be 1.
-#
-AM_CPPFLAGS = -DOMPI_PROFILE_LAYER=1 -DOMPI_COMPILING_FORTRAN_WRAPPERS=1
+CLEANFILES=
+libmpi_mpifh_pmpi_la_LIBADD =
+
+AM_CPPFLAGS = -DOMPI_BUILD_MPI_PROFILING=1 -DOMPI_COMPILING_FORTRAN_WRAPPERS=1
 #
 # This build needs to go through only if profiling is required.
 # Further, this build HAS to go through if profiling is required.
@@ -42,12 +38,7 @@ AM_CPPFLAGS = -DOMPI_PROFILE_LAYER=1 -DOMPI_COMPILING_FORTRAN_WRAPPERS=1
 noinst_LTLIBRARIES =
 if BUILD_PMPI_FORTRAN_MPIFH_BINDINGS_LAYER
 noinst_LTLIBRARIES += libmpi_mpifh_pmpi.la
-else
-noinst_LTLIBRARIES +=
 endif
-
-headers = \
-    defines.h
 
 linked_files = \
         pabort_f.c \
@@ -376,9 +367,13 @@ linked_files += \
         pfile_get_view_f.c \
         pfile_iread_at_f.c \
         pfile_iread_f.c \
+        pfile_iread_at_all_f.c \
+        pfile_iread_all_f.c \
         pfile_iread_shared_f.c \
         pfile_iwrite_at_f.c \
         pfile_iwrite_f.c \
+        pfile_iwrite_at_all_f.c \
+        pfile_iwrite_all_f.c \
         pfile_iwrite_shared_f.c \
         pfile_open_f.c \
         pfile_preallocate_f.c \
@@ -428,7 +423,19 @@ $(linked_files):
 
 # psizeof_f.f90 is generated based on some results from configure tests.
 CLEANFILES += psizeof_f.f90
+
+# Build the MPI_SIZEOF code in a separate convenience library (see
+# lengthy comment in ompi/mpi/fortran/mpif-h/Makefile.am for an
+# explanation why).
+if BUILD_FORTRAN_SIZEOF
+noinst_LTLIBRARIES += libmpi_mpifh_psizeof.la
+# Do not dist this file; it is generated
+nodist_libmpi_mpifh_psizeof_la_SOURCES = psizeof_f.f90
+libmpi_mpifh_pmpi_la_LIBADD += libmpi_mpifh_psizeof.la
+endif
+
 sizeof_pl=$(top_srcdir)/ompi/mpi/fortran/base/gen-mpi-sizeof.pl
+
 psizeof_f.f90: $(top_builddir)/config.status
 psizeof_f.f90: $(sizeof_pl)
 psizeof_f.f90:
@@ -443,14 +450,12 @@ psizeof_f.f90:
 # The library itself
 #
 nodist_libmpi_mpifh_pmpi_la_SOURCES = \
-        psizeof_f.f90 \
         $(linked_files)
 
 # Conditionally install the header files
 
 if WANT_INSTALL_HEADERS
 ompidir = $(ompiincludedir)/$(subdir)
-ompi_HEADERS = $(headers)
 endif
 
 # These files were created by targets above

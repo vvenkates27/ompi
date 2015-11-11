@@ -12,6 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,12 +31,11 @@
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Send = PMPI_Send
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Send PMPI_Send
 #endif
 
 static const char FUNC_NAME[] = "MPI_Send";
@@ -74,7 +75,6 @@ int MPI_Send(const void *buf, int count, MPI_Datatype type, int dest,
     }
 
     OPAL_CR_ENTER_LIBRARY();
-    /* XXX -- CONST -- do not cast away const -- update mca/pml */
-    rc = MCA_PML_CALL(send((void *) buf, count, type, dest, tag, MCA_PML_BASE_SEND_STANDARD, comm));
+    rc = MCA_PML_CALL(send(buf, count, type, dest, tag, MCA_PML_BASE_SEND_STANDARD, comm));
     OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

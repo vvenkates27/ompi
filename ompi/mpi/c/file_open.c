@@ -10,9 +10,11 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,12 +34,11 @@
 #include "ompi/mca/io/base/base.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_File_open = PMPI_File_open
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_File_open PMPI_File_open
 #endif
 
 static const char FUNC_NAME[] = "MPI_File_open";
@@ -90,8 +91,7 @@ int MPI_File_open(MPI_Comm comm, const char *filename, int amode,
     /* Create an empty MPI_File handle */
 
     *fh = MPI_FILE_NULL;
-    /* XXX -- CONST -- do not cast away const -- update mca/io */
-    rc = ompi_file_open(comm, (char *) filename, amode, info, fh);
+    rc = ompi_file_open(comm, filename, amode, info, fh);
 
     /* Creating the file handle also selects a component to use,
        creates a module, and calls file_open() on the module.  So

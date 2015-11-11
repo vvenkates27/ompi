@@ -14,6 +14,8 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2012-2013 Inria.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/mca/topo/topo.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Graph_map = PMPI_Graph_map
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Graph_map PMPI_Graph_map
 #endif
 
 static const char FUNC_NAME[] = "MPI_Graph_map";
@@ -75,8 +76,7 @@ int MPI_Graph_map(MPI_Comm comm, int nnodes, const int indx[], const int edges[]
            newrank = rank */
         *newrank = ompi_comm_rank(comm);
     } else {
-        /* XXX -- CONST -- do not cast away const -- update mca/topo */
-      err = comm->c_topo->topo.graph.graph_map(comm, nnodes, (int *) indx, (int *) edges, newrank);
+      err = comm->c_topo->topo.graph.graph_map(comm, nnodes, indx, edges, newrank);
     }
     OPAL_CR_EXIT_LIBRARY();
 

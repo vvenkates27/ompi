@@ -3,6 +3,8 @@
  * Copyright (c) 2014      The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,8 +20,6 @@
 
 #include "osc_portals4.h"
 #include "osc_portals4_request.h"
-
-#include "ompi/mca/mtl/portals4/mtl_portals4_endpoint.h"
 
 
 static int
@@ -180,7 +180,7 @@ ompi_osc_portals4_get_dt(struct ompi_datatype_t *dt, ptl_datatype_t *ptl_dt)
 
 
 int
-ompi_osc_portals4_rput(void *origin_addr,
+ompi_osc_portals4_rput(const void *origin_addr,
                        int origin_count,
                        struct ompi_datatype_t *origin_dt,
                        int target,
@@ -312,7 +312,7 @@ ompi_osc_portals4_rget(void *origin_addr,
 
 
 int
-ompi_osc_portals4_raccumulate(void *origin_addr,
+ompi_osc_portals4_raccumulate(const void *origin_addr,
                               int origin_count,
                               struct ompi_datatype_t *origin_dt,
                               int target,
@@ -415,7 +415,7 @@ ompi_osc_portals4_raccumulate(void *origin_addr,
 
 
 int
-ompi_osc_portals4_rget_accumulate(void *origin_addr,
+ompi_osc_portals4_rget_accumulate(const void *origin_addr,
                                   int origin_count,
                                   struct ompi_datatype_t *origin_dt,
                                   void *result_addr,
@@ -469,6 +469,11 @@ ompi_osc_portals4_rget_accumulate(void *origin_addr,
             ptl_size_t result_md_offset, origin_md_offset;
 
             ret = ompi_datatype_type_size(origin_dt, &length);
+            if (OMPI_SUCCESS != ret) {
+                OMPI_OSC_PORTALS4_REQUEST_RETURN(request);
+                return ret;
+            }
+            ret = ompi_osc_portals4_get_dt(origin_dt, &ptl_dt);
             if (OMPI_SUCCESS != ret) {
                 OMPI_OSC_PORTALS4_REQUEST_RETURN(request);
                 return ret;
@@ -580,7 +585,7 @@ ompi_osc_portals4_rget_accumulate(void *origin_addr,
 
 
 int
-ompi_osc_portals4_put(void *origin_addr,
+ompi_osc_portals4_put(const void *origin_addr,
                       int origin_count,
                       struct ompi_datatype_t *origin_dt,
                       int target,
@@ -692,7 +697,7 @@ ompi_osc_portals4_get(void *origin_addr,
 
 
 int
-ompi_osc_portals4_accumulate(void *origin_addr,
+ompi_osc_portals4_accumulate(const void *origin_addr,
                              int origin_count,
                              struct ompi_datatype_t *origin_dt,
                              int target,
@@ -785,7 +790,7 @@ ompi_osc_portals4_accumulate(void *origin_addr,
 
 
 int
-ompi_osc_portals4_get_accumulate(void *origin_addr,
+ompi_osc_portals4_get_accumulate(const void *origin_addr,
                                  int origin_count,
                                  struct ompi_datatype_t *origin_dt,
                                  void *result_addr,
@@ -832,6 +837,10 @@ ompi_osc_portals4_get_accumulate(void *origin_addr,
             ptl_size_t result_md_offset, origin_md_offset;
 
             ret = ompi_datatype_type_size(origin_dt, &length);
+            if (OMPI_SUCCESS != ret) {
+                return ret;
+            }
+            ret = ompi_osc_portals4_get_dt(origin_dt, &ptl_dt);
             if (OMPI_SUCCESS != ret) {
                 return ret;
             }
@@ -937,8 +946,8 @@ ompi_osc_portals4_get_accumulate(void *origin_addr,
 
 
 int
-ompi_osc_portals4_compare_and_swap(void *origin_addr,
-                                   void *compare_addr,
+ompi_osc_portals4_compare_and_swap(const void *origin_addr,
+                                   const void *compare_addr,
                                    void *result_addr,
                                    struct ompi_datatype_t *dt,
                                    int target,
@@ -970,7 +979,7 @@ ompi_osc_portals4_compare_and_swap(void *origin_addr,
     ret = ompi_datatype_type_size(dt, &length);
     if (OMPI_SUCCESS != ret) return ret;
 
-    assert(length < module->fetch_atomic_max);
+    assert(length <= module->fetch_atomic_max);
 
     result_md_offset = (ptl_size_t) result_addr;
     origin_md_offset = (ptl_size_t) origin_addr;
@@ -1000,7 +1009,7 @@ ompi_osc_portals4_compare_and_swap(void *origin_addr,
 
 
 int
-ompi_osc_portals4_fetch_and_op(void *origin_addr,
+ompi_osc_portals4_fetch_and_op(const void *origin_addr,
                                void *result_addr,
                                struct ompi_datatype_t *dt,
                                int target,
@@ -1033,7 +1042,7 @@ ompi_osc_portals4_fetch_and_op(void *origin_addr,
     ret = ompi_datatype_type_size(dt, &length);
     if (OMPI_SUCCESS != ret) return ret;
 
-    assert(length < module->fetch_atomic_max);
+    assert(length <= module->fetch_atomic_max);
 
     (void)opal_atomic_add_64(&module->opcount, 1);
 

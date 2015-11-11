@@ -13,6 +13,8 @@
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,12 +31,11 @@
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_File_write_at = PMPI_File_write_at
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_File_write_at PMPI_File_write_at
 #endif
 
 static const char FUNC_NAME[] = "MPI_File_write_at";
@@ -71,9 +72,8 @@ int MPI_File_write_at(MPI_File fh, MPI_Offset offset, const void *buf,
 
     switch (fh->f_io_version) {
     case MCA_IO_BASE_V_2_0_0:
-        /* XXX -- CONST -- do not cast away const -- update mca/io */
         rc = fh->f_io_selected_module.v2_0_0.
-          io_module_file_write_at(fh, offset, (void *) buf, count, datatype, status);
+          io_module_file_write_at(fh, offset, buf, count, datatype, status);
         break;
 
     default:

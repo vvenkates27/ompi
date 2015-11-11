@@ -10,14 +10,14 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2014 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2009 University of Houston. All rights reserved.
  * Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2012-2013 Inria.  All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  *
@@ -89,8 +89,7 @@
 #include "ompi/debuggers/debuggers.h"
 #include "ompi/proc/proc.h"
 #include "ompi/mca/pml/base/pml_base_bsend.h"
-#include "ompi/mca/dpm/base/base.h"
-#include "ompi/mca/pubsub/base/base.h"
+#include "ompi/dpm/dpm.h"
 #include "ompi/mpiext/mpiext.h"
 
 #if OPAL_ENABLE_FT_CR == 1
@@ -125,10 +124,12 @@ const char ompi_version_string[] = OMPI_IDENT_STRING;
  * Global variables and symbols for the MPI layer
  */
 
-bool ompi_mpi_init_started = false;
-bool ompi_mpi_initialized = false;
-bool ompi_mpi_finalized = false;
-bool ompi_rte_initialized = false;
+opal_mutex_t ompi_mpi_bootstrap_mutex = OPAL_MUTEX_STATIC_INIT;
+volatile bool ompi_mpi_init_started = false;
+volatile bool ompi_mpi_initialized = false;
+volatile bool ompi_mpi_finalize_started = false;
+volatile bool ompi_mpi_finalized = false;
+volatile bool ompi_rte_initialized = false;
 
 bool ompi_mpi_thread_multiple = false;
 int ompi_mpi_thread_requested = MPI_THREAD_SINGLE;
@@ -257,30 +258,7 @@ MPI_Fint *MPI_F_STATUSES_IGNORE = NULL;
    ompi/include/mpif-common.h.
  */
 
-#define INST(type, value, upper_case, lower_case, single_u, double_u)   \
-type lower_case = value; \
-type upper_case = value; \
-type single_u = value;  \
-type double_u = value
-
-INST(int, -1, MPI_FORTRAN_BOTTOM, mpi_fortran_bottom,
-     mpi_fortran_bottom_, mpi_fortran_bottom__);
-INST(int, -1, MPI_FORTRAN_IN_PLACE, mpi_fortran_in_place,
-     mpi_fortran_in_place_, mpi_fortran_in_place__);
-INST(int, -1, MPI_FORTRAN_UNWEIGHTED, mpi_fortran_unweighted,
-     mpi_fortran_unweighted_, mpi_fortran_unweighted__);
-INST(int, -1, MPI_FORTRAN_WEIGHTS_EMPTY, mpi_fortran_weights_empty,
-     mpi_fortran_weights_empty_, mpi_fortran_weights_empty__);
-INST(char *, NULL, MPI_FORTRAN_ARGV_NULL, mpi_fortran_argv_null,
-     mpi_fortran_argv_null_, mpi_fortran_argv_null__);
-INST(char *, NULL, MPI_FORTRAN_ARGVS_NULL, mpi_fortran_argvs_null,
-     mpi_fortran_argvs_null_, mpi_fortran_argvs_null__);
-INST(int *, NULL, MPI_FORTRAN_ERRCODES_IGNORE, mpi_fortran_errcodes_ignore,
-     mpi_fortran_errcodes_ignore_, mpi_fortran_errcodes_ignore__);
-INST(int *, NULL, MPI_FORTRAN_STATUS_IGNORE, mpi_fortran_status_ignore,
-     mpi_fortran_status_ignore_, mpi_fortran_status_ignore__);
-INST(int *, NULL, MPI_FORTRAN_STATUSES_IGNORE, mpi_fortran_statuses_ignore,
-      mpi_fortran_statuses_ignore_, mpi_fortran_statuses_ignore__);
+#include "mpif-c-constants.h"
 
 /*
  * Hash tables for MPI_Type_create_f90* functions
@@ -320,6 +298,19 @@ _process_name_compare(const opal_process_name_t p1, const opal_process_name_t p2
     ompi_process_name_t* o2 = (ompi_process_name_t*)&p2;
     return ompi_rte_compare_name_fields(OMPI_RTE_CMP_ALL, o1, o2);
 }
+
+static int _convert_string_to_process_name(opal_process_name_t *name,
+                                           const char* name_string)
+{
+    return ompi_rte_convert_string_to_process_name(name, name_string);
+}
+
+static int _convert_process_name_to_string(char** name_string,
+                                          const opal_process_name_t *name)
+{
+    return ompi_rte_convert_process_name_to_string(name_string, name);
+}
+
 
 void ompi_mpi_thread_level(int requested, int *provided)
 {
@@ -394,9 +385,26 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
      * for the modex in order to work in heterogeneous environments. */
     uint8_t threadlevel_bf;
 
-    /* Indicate that we have *started* MPI_INIT*.  MPI_FINALIZE has
-       something sorta similar in a static local variable in
-       ompi_mpi_finalize(). */
+    /* Ensure that we were not already initialized or finalized.
+
+       This lock is held for the duration of ompi_mpi_init() and
+       ompi_mpi_finalize().  Hence, if we get it, then no other thread
+       is inside the critical section (and we don't have to check the
+       *_started bool variables). */
+    opal_mutex_lock(&ompi_mpi_bootstrap_mutex);
+    if (ompi_mpi_finalized) {
+        opal_show_help("help-mpi-runtime.txt",
+                       "mpi_init: already finalized", true);
+        opal_mutex_unlock(&ompi_mpi_bootstrap_mutex);
+        return MPI_ERR_OTHER;
+    } else if (ompi_mpi_initialized) {
+        opal_show_help("help-mpi-runtime.txt",
+                       "mpi_init: invoked multiple times", true);
+        opal_mutex_unlock(&ompi_mpi_bootstrap_mutex);
+        return MPI_ERR_OTHER;
+    }
+
+    /* Indicate that we have *started* MPI_INIT* */
     ompi_mpi_init_started = true;
 
     /* Setup enough to check get/set MCA params */
@@ -409,6 +417,9 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
     /* Convince OPAL to use our naming scheme */
     opal_process_name_print = _process_name_print_for_opal;
     opal_compare_proc = _process_name_compare;
+    opal_convert_string_to_process_name = _convert_string_to_process_name;
+    opal_convert_process_name_to_string = _convert_process_name_to_string;
+    opal_proc_for_name = ompi_proc_for_name;
 
     /* Register MCA variables */
     if (OPAL_SUCCESS != (ret = ompi_register_mca_variables())) {
@@ -483,7 +494,6 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
     /* check for timing request - get stop time and report elapsed time if so */
     OPAL_TIMING_MNEXT((&tm,"time from completion of rte_init to modex"));
 
-#if OPAL_HAVE_HWLOC
     /* if hwloc is available but didn't get setup for some
      * reason, do so now
      */
@@ -493,7 +503,6 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
             goto error;
         }
     }
-#endif
 
     /* Register the default errhandler callback - RTE will ignore if it
      * doesn't support this capability
@@ -515,7 +524,7 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
 
 #if OMPI_ENABLE_THREAD_MULTIPLE
     /* add this bitflag to the modex */
-    OPAL_MODEX_SEND_STRING(ret, PMIX_SYNC_REQD, PMIX_GLOBAL,
+    OPAL_MODEX_SEND_STRING(ret, OPAL_PMIX_GLOBAL,
                            "MPI_THREAD_LEVEL", &threadlevel_bf, sizeof(uint8_t));
     if (OPAL_SUCCESS != ret) {
         error = "ompi_mpi_init: modex send thread level";
@@ -630,10 +639,9 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
 
     /* exchange connection info - this function may also act as a barrier
      * if data exchange is required. The modex occurs solely across procs
-     * in our job, so no proc array is passed. If a barrier is required,
-     * the "fence" function will perform it internally
-     */
-    OPAL_FENCE(NULL, 0, NULL, NULL);
+     * in our job. If a barrier is required, the "modex" function will
+     * perform it internally */
+    OPAL_MODEX();
 
     OPAL_TIMING_MNEXT((&tm,"time from modex to first barrier"));
 
@@ -749,10 +757,21 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
         goto error;
     }
 
-    /* add all ompi_proc_t's to PML */
-    if (NULL == (procs = ompi_proc_world(&nprocs))) {
-        error = "ompi_proc_world() failed";
-        goto error;
+    /* some btls/mtls require we call add_procs with all procs in the job.
+     * since the btls/mtls have no visibility here it is up to the pml to
+     * convey this requirement */
+    if (mca_pml_base_requires_world ()) {
+        if (NULL == (procs = ompi_proc_world (&nprocs))) {
+            error = "ompi_proc_get_allocated () failed";
+            goto error;
+        }
+    } else {
+        /* add all allocated ompi_proc_t's to PML (below the add_procs limit this
+         * behaves identically to ompi_proc_world ()) */
+        if (NULL == (procs = ompi_proc_get_allocated (&nprocs))) {
+            error = "ompi_proc_get_allocated () failed";
+            goto error;
+        }
     }
     ret = MCA_PML_CALL(add_procs(procs, nprocs));
     free(procs);
@@ -815,23 +834,9 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
         goto error;
     }
 
-    /* Setup the publish/subscribe (PUBSUB) framework */
-    if (OMPI_SUCCESS != (ret = mca_base_framework_open(&ompi_pubsub_base_framework, 0))) {
-        error = "mca_pubsub_base_open() failed";
-        goto error;
-    }
-    if (OMPI_SUCCESS != (ret = ompi_pubsub_base_select())) {
-        error = "ompi_pubsub_base_select() failed";
-        goto error;
-    }
-
-    /* Setup the dynamic process management (DPM) framework */
-    if (OMPI_SUCCESS != (ret = mca_base_framework_open(&ompi_dpm_base_framework, 0))) {
-        error = "ompi_dpm_base_open() failed";
-        goto error;
-    }
-    if (OMPI_SUCCESS != (ret = ompi_dpm_base_select())) {
-        error = "ompi_dpm_base_select() failed";
+    /* Setup the dynamic process management (DPM) subsystem */
+    if (OMPI_SUCCESS != (ret = ompi_dpm_init())) {
+        error = "ompi_dpm_init() failed";
         goto error;
     }
 
@@ -866,8 +871,8 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
     /* Check whether we have been spawned or not.  We introduce that
        at the very end, since we need collectives, datatypes, ptls
        etc. up and running here.... */
-    if (OMPI_SUCCESS != (ret = ompi_dpm.dyn_init())) {
-        error = "ompi_comm_dyn_init() failed";
+    if (OMPI_SUCCESS != (ret = ompi_dpm_dyn_init())) {
+        error = "ompi_dpm_dyn_init() failed";
         goto error;
     }
 
@@ -916,6 +921,7 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
                            "mpi_init:startup:internal-failure", true,
                            "MPI_INIT", "MPI_INIT", error, err_msg, ret);
         }
+        opal_mutex_unlock(&ompi_mpi_bootstrap_mutex);
         return ret;
     }
 
@@ -945,5 +951,6 @@ int ompi_mpi_init(int argc, char **argv, int requested, int *provided)
     OPAL_TIMING_REPORT(ompi_enable_timing_ext, &tm);
     OPAL_TIMING_RELEASE(&tm);
 
+    opal_mutex_unlock(&ompi_mpi_bootstrap_mutex);
     return MPI_SUCCESS;
 }

@@ -11,8 +11,10 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2014      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2014-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/mca/osc/osc.h"
 #include "ompi/datatype/ompi_datatype.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Rput = PMPI_Rput
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Rput PMPI_Rput
 #endif
 
 static const char FUNC_NAME[] = "MPI_Rput";
@@ -62,7 +63,7 @@ int MPI_Rput(const void *origin_addr, int origin_count, MPI_Datatype origin_data
         } else if (NULL == target_datatype ||
                    MPI_DATATYPE_NULL == target_datatype) {
             rc = MPI_ERR_TYPE;
-        } else if ( target_disp < 0 ) {
+        } else if ( MPI_WIN_FLAVOR_DYNAMIC != win->w_flavor && target_disp < 0 ) {
             rc = MPI_ERR_DISP;
         } else {
             OMPI_CHECK_DATATYPE_FOR_ONE_SIDED(rc, origin_datatype, origin_count);
@@ -80,9 +81,8 @@ int MPI_Rput(const void *origin_addr, int origin_count, MPI_Datatype origin_data
 
     OPAL_CR_ENTER_LIBRARY();
 
-    /* TODO: do not cast away the const */
-    rc = win->w_osc_module->osc_rput((void *) origin_addr, origin_count, origin_datatype,
-                                    target_rank, target_disp, target_count,
+    rc = win->w_osc_module->osc_rput(origin_addr, origin_count, origin_datatype,
+                                     target_rank, target_disp, target_count,
                                      target_datatype, win, request);
     OMPI_ERRHANDLER_RETURN(rc, win, rc, FUNC_NAME);
 }

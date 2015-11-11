@@ -12,6 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/op/op.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Iallreduce = PMPI_Iallreduce
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Iallreduce PMPI_Iallreduce
 #endif
 
 static const char FUNC_NAME[] = "MPI_Iallreduce";
@@ -78,7 +79,8 @@ int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count,
             int ret = OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_OP, msg);
             free(msg);
             return ret;
-        } else if( MPI_IN_PLACE == recvbuf ) {
+        } else if ((MPI_IN_PLACE == sendbuf && OMPI_COMM_IS_INTER(comm)) ||
+                   MPI_IN_PLACE == recvbuf ) {
             return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_BUFFER,
                                           FUNC_NAME);
         } else if( (sendbuf == recvbuf) &&
@@ -97,8 +99,7 @@ int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count,
     /* Invoke the coll component to perform the back-end operation */
 
     OBJ_RETAIN(op);
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_iallreduce((void *) sendbuf, recvbuf, count, datatype,
+    err = comm->c_coll.coll_iallreduce(sendbuf, recvbuf, count, datatype,
                                        op, comm, request, comm->c_coll.coll_iallreduce_module);
     OBJ_RELEASE(op);
     OMPI_ERRHANDLER_RETURN(err, comm, err, FUNC_NAME);

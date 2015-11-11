@@ -4,6 +4,8 @@
  * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,7 +50,6 @@ struct ompi_pml_cm_t {
     int                   free_list_num;
     int                   free_list_max;
     int                   free_list_inc;
-    int                   default_priority;
 };
 typedef struct ompi_pml_cm_t ompi_pml_cm_t;
 extern ompi_pml_cm_t ompi_pml_cm;
@@ -207,7 +208,7 @@ mca_pml_cm_recv(void *addr,
 }
 
 __opal_attribute_always_inline__ static inline int
-mca_pml_cm_isend_init(void* buf,
+mca_pml_cm_isend_init(const void* buf,
                         size_t count,
                         ompi_datatype_t* datatype,
                         int dst,
@@ -233,7 +234,7 @@ mca_pml_cm_isend_init(void* buf,
 }
 
 __opal_attribute_always_inline__ static inline int
-mca_pml_cm_isend(void* buf,
+mca_pml_cm_isend(const void* buf,
                    size_t count,
                    ompi_datatype_t* datatype,
                    int dst,
@@ -304,7 +305,7 @@ mca_pml_cm_isend(void* buf,
 }
 
 __opal_attribute_always_inline__ static inline int
-mca_pml_cm_send(void *buf,
+mca_pml_cm_send(const void *buf,
                 size_t count,
                 ompi_datatype_t* datatype,
                 int dst,

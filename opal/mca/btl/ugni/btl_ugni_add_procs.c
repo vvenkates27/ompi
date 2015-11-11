@@ -3,7 +3,7 @@
  * Copyright (c) 2011-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2011      UT-Battelle, LLC. All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +18,7 @@
 #include "btl_ugni_smsg.h"
 
 #include "opal/include/opal/align.h"
-#include "opal/mca/dstore/dstore.h"
+#include "opal/mca/pmix/pmix.h"
 
 #define INITIAL_GNI_EPS 10000
 
@@ -28,13 +28,11 @@ static void
 mca_btl_ugni_module_set_max_reg (mca_btl_ugni_module_t *ugni_module, int nlocal_procs);
 static int mca_btl_ugni_smsg_setup (int nprocs);
 
-int mca_btl_ugni_add_procs(struct mca_btl_base_module_t* btl,
-                           size_t nprocs,
-                           struct opal_proc_t **procs,
-                           struct mca_btl_base_endpoint_t **peers,
-                           opal_bitmap_t *reachable) {
+int mca_btl_ugni_add_procs (struct mca_btl_base_module_t* btl, size_t nprocs,
+                            struct opal_proc_t **procs,
+                            struct mca_btl_base_endpoint_t **peers,
+                            opal_bitmap_t *reachable) {
     mca_btl_ugni_module_t *ugni_module = (mca_btl_ugni_module_t *) btl;
-    size_t i;
     int rc;
     void *mmap_start_addr;
 
@@ -59,36 +57,45 @@ int mca_btl_ugni_add_procs(struct mca_btl_base_module_t* btl,
         }
     }
 
-    for (i = 0 ; i < nprocs ; ++i) {
+    for (size_t i = 0 ; i < nprocs ; ++i) {
         struct opal_proc_t *opal_proc = procs[i];
         uint64_t proc_id = mca_btl_ugni_proc_name_to_id(opal_proc->proc_name);
 
-        if (OPAL_PROC_ON_LOCAL_NODE(opal_proc->proc_flags)) {
-            ugni_module->nlocal_procs++;
+        /* check for an existing endpoint */
+        OPAL_THREAD_LOCK(&ugni_module->endpoint_lock);
+        if (OPAL_SUCCESS != opal_hash_table_get_value_uint64 (&ugni_module->id_to_endpoint, proc_id, (void **) (peers + i))) {
+            if (OPAL_PROC_ON_LOCAL_NODE(opal_proc->proc_flags)) {
+                ugni_module->nlocal_procs++;
 
-            /* ugni is allowed on local processes to provide support for network
-             * atomic operations */
+                /* ugni is allowed on local processes to provide support for network
+                 * atomic operations */
+            }
+
+            /*  Create and Init endpoints */
+            rc = mca_btl_ugni_init_ep (ugni_module, peers + i, (mca_btl_ugni_module_t *) btl, opal_proc);
+            if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
+                OPAL_THREAD_UNLOCK(&ugni_module->endpoint_lock);
+                BTL_ERROR(("btl/ugni error initializing endpoint"));
+                return rc;
+            }
+
+            /* go ahead and connect the local endpoint for RDMA/CQ write */
+            if (opal_proc == opal_proc_local_get ()) {
+                ugni_module->local_ep = peers[i];
+            }
+
+            /* Add this endpoint to the pointer array. */
+            BTL_VERBOSE(("initialized uGNI endpoint for proc id: 0x%" PRIx64 " ptr: %p", proc_id, (void *) peers[i]));
+            opal_hash_table_set_value_uint64 (&ugni_module->id_to_endpoint, proc_id, peers[i]);
+
+            ++ugni_module->endpoint_count;
         }
+        OPAL_THREAD_UNLOCK(&ugni_module->endpoint_lock);
 
-        /*  Create and Init endpoints */
-        rc = mca_btl_ugni_init_ep (ugni_module, peers + i, (mca_btl_ugni_module_t *) btl, opal_proc);
-        if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
-            BTL_ERROR(("btl/ugni error initializing endpoint"));
-            return rc;
+        /* Set the reachable bit if necessary */
+        if (reachable) {
+            rc = opal_bitmap_set_bit (reachable, i);
         }
-
-        /* go ahead and connect the local endpoint for RDMA/CQ write */
-        if (opal_proc == opal_proc_local_get ()) {
-            ugni_module->local_ep = peers[i];
-        }
-
-        /* Add this endpoint to the pointer array. */
-        BTL_VERBOSE(("initialized uGNI endpoint for proc id: 0x%" PRIx64 " ptr: %p", proc_id, (void *) peers[i]));
-        opal_hash_table_set_value_uint64 (&ugni_module->id_to_endpoint, proc_id, peers[i]);
-
-        /* Set the reachable bit */
-        rc = opal_bitmap_set_bit (reachable, i);
-        ++ugni_module->endpoint_count;
     }
 
     mca_btl_ugni_module_set_max_reg (ugni_module, ugni_module->nlocal_procs);
@@ -224,21 +231,65 @@ int mca_btl_ugni_del_procs (struct mca_btl_base_module_t *btl,
     return OPAL_SUCCESS;
 }
 
+
+struct mca_btl_base_endpoint_t *mca_btl_ugni_get_ep (struct mca_btl_base_module_t *module, opal_proc_t *proc)
+{
+    mca_btl_ugni_module_t *ugni_module = (mca_btl_ugni_module_t *) module;
+    uint64_t proc_id = mca_btl_ugni_proc_name_to_id(proc->proc_name);
+    mca_btl_base_endpoint_t *ep;
+    int rc;
+
+    OPAL_THREAD_LOCK(&ugni_module->endpoint_lock);
+
+    do {
+        rc = opal_hash_table_get_value_uint64 (&ugni_module->id_to_endpoint, proc_id, (void **) &ep);
+        if (OPAL_SUCCESS == rc) {
+            OPAL_THREAD_UNLOCK(&ugni_module->endpoint_lock);
+            break;
+        }
+
+        /*  Create and Init endpoints */
+        rc = mca_btl_ugni_init_ep (ugni_module, &ep, ugni_module, proc);
+        if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {
+            BTL_ERROR(("btl/ugni error initializing endpoint"));
+            break;
+        }
+
+        /* Add this endpoint to the pointer array. */
+        BTL_VERBOSE(("initialized uGNI endpoint for proc id: 0x%" PRIx64 " ptr: %p", proc_id, (void *) ep));
+        opal_hash_table_set_value_uint64 (&ugni_module->id_to_endpoint, proc_id, ep);
+    } while (0);
+
+    OPAL_THREAD_UNLOCK(&ugni_module->endpoint_lock);
+
+    return ep;
+}
+
+
 static int ugni_reg_rdma_mem (void *reg_data, void *base, size_t size,
                               mca_mpool_base_registration_t *reg)
 {
     mca_btl_ugni_module_t *ugni_module = (mca_btl_ugni_module_t *) reg_data;
     mca_btl_ugni_reg_t *ugni_reg = (mca_btl_ugni_reg_t *) reg;
     gni_return_t rc;
+    int flags;
 
     if (ugni_module->reg_count >= ugni_module->reg_max) {
         return OPAL_ERR_OUT_OF_RESOURCE;
     }
 
+    if (reg->access_flags & (MCA_MPOOL_ACCESS_REMOTE_WRITE | MCA_MPOOL_ACCESS_LOCAL_WRITE |
+                             MCA_MPOOL_ACCESS_REMOTE_ATOMIC)) {
+        flags = GNI_MEM_READWRITE;
+    } else {
+        flags = GNI_MEM_READ_ONLY;
+    }
+
+    flags |= GNI_MEM_RELAXED_PI_ORDERING;
+
     OPAL_THREAD_LOCK(&ugni_module->device->dev_lock);
     rc = GNI_MemRegister (ugni_module->device->dev_handle, (uint64_t) base,
-                          size, NULL, GNI_MEM_READWRITE | GNI_MEM_RELAXED_PI_ORDERING,
-                          -1, &(ugni_reg->handle.gni_handle));
+                          size, NULL, flags, -1, &(ugni_reg->handle.gni_handle));
     OPAL_THREAD_UNLOCK(&ugni_module->device->dev_lock);
 
     if (OPAL_UNLIKELY(GNI_RC_SUCCESS != rc)) {
@@ -289,11 +340,10 @@ static int
 mca_btl_ugni_setup_mpools (mca_btl_ugni_module_t *ugni_module)
 {
     struct mca_mpool_base_resources_t mpool_resources;
-    unsigned int mbox_increment, nprocs;
+    unsigned int mbox_increment;
+    uint32_t nprocs, *u32;
     const char *mpool_name;
     int rc;
-    opal_list_t vals;
-    opal_value_t *kv;
 
     rc = opal_pointer_array_init (&ugni_module->pending_smsg_frags_bb, 0,
                                   1 << 30, 32768);
@@ -302,16 +352,13 @@ mca_btl_ugni_setup_mpools (mca_btl_ugni_module_t *ugni_module)
     }
 
     /* determine how many procs are in the job (might want to check universe size here) */
-    OBJ_CONSTRUCT(&vals, opal_list_t);
-    if (OPAL_SUCCESS == opal_dstore.fetch(opal_dstore_internal, &OPAL_PROC_MY_NAME,
-                                          OPAL_DSTORE_UNIV_SIZE, &vals)) {
-        /* the number of procs in the job is in the uint32 field */
-        kv = (opal_value_t*)opal_list_get_first(&vals);
-        nprocs = kv->data.uint32;
-    } else {
+    u32 = &nprocs;
+    OPAL_MODEX_RECV_VALUE(rc, OPAL_PMIX_UNIV_SIZE, &OPAL_PROC_MY_NAME,
+                          &u32, OPAL_UINT32);
+    if (OPAL_SUCCESS != rc) {
+        /* take a wild conservative guess */
         nprocs = 512;
     }
-    OPAL_LIST_DESTRUCT(&vals);
 
     rc = mca_btl_ugni_smsg_setup (nprocs);
     if (OPAL_UNLIKELY(OPAL_SUCCESS != rc)) {

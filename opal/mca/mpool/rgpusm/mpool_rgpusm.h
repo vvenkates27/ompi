@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Voltaire. All rights reserved.
- * Copyright (c) 2012      NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2012-2015 NVIDIA Corporation.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
  *                         reserved.
  *
@@ -41,6 +41,7 @@ struct mca_mpool_rgpusm_component_t {
     bool print_stats;
     int leave_pinned;
     int output;
+    bool empty_cache;
 };
 typedef struct mca_mpool_rgpusm_component_t mca_mpool_rgpusm_component_t;
 
@@ -78,7 +79,7 @@ void mca_mpool_rgpusm_module_init(mca_mpool_rgpusm_module_t *mpool);
   * register block of memory
   */
 int mca_mpool_rgpusm_register(mca_mpool_base_module_t* mpool, void *addr,
-        size_t size, uint32_t flags, mca_mpool_base_registration_t **reg);
+        size_t size, uint32_t flags, int32_t access_flags, mca_mpool_base_registration_t **reg);
 
 /**
  * deregister memory

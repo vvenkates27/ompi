@@ -82,9 +82,11 @@ void opal_btl_usnic_print_stats(
     char tmp[128], str[2048];
 
     /* The usuals */
-    snprintf(str, sizeof(str), "%s:MCW:%3u, ST(P+D)/F/C/R(T+F)/A:%8lu(%8u+%8u)/%8lu/%8lu/%4lu(%4lu+%4lu)/%8lu, RcvTot/Chk/F/C/L/H/D/BF/A:%8lu/%c%c/%8lu/%8lu/%4lu+%2lu/%4lu/%4lu/%6lu OA/DA %4lu/%4lu CRC:%4lu ",
+    snprintf(str, sizeof(str), "%s:MCW:%3u, %s, ST(P+D)/F/C/R(T+F)/A:%8lu(%8u+%8u)/%8lu/%8lu/%4lu(%4lu+%4lu)/%8lu, RcvTot/Chk/F/C/L/H/D/BF/A:%8lu/%c%c/%8lu/%8lu/%4lu+%2lu/%4lu/%4lu/%6lu OA/DA %4lu/%4lu CRC:%4lu ",
              prefix,
              opal_proc_local_get()->proc_name.vpid,
+
+             module->fabric_info->fabric_attr->name,
 
              module->stats.num_total_sends,
              module->mod_channels[USNIC_PRIORITY_CHANNEL].num_channel_sends,
@@ -194,11 +196,6 @@ static void usnic_stats_callback(int fd, short flags, void *arg)
 
     opal_btl_usnic_print_stats(module, tmp,
                                /*reset=*/mca_btl_usnic_component.stats_relative);
-
-    /* In OMPI v1.6, we have to re-add this event (because there's an
-       old libevent in OMPI v1.6) */
-    opal_event_add(&(module->stats.timer_event),
-                   &(module->stats.timeout));
 }
 
 /*
@@ -212,7 +209,8 @@ int opal_btl_usnic_stats_init(opal_btl_usnic_module_t *module)
         module->stats.timeout.tv_sec = mca_btl_usnic_component.stats_frequency;
         module->stats.timeout.tv_usec = 0;
 
-        opal_event_set(opal_event_base, &(module->stats.timer_event),
+        opal_event_set(mca_btl_usnic_component.opal_evbase,
+                       &(module->stats.timer_event),
                        -1, EV_TIMEOUT | EV_PERSIST,
                        &usnic_stats_callback, module);
         opal_event_add(&(module->stats.timer_event),

@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008-2014 University of Houston. All rights reserved.
+ * Copyright (c) 2008-2015 University of Houston. All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -31,7 +31,7 @@
 #include "ompi/mca/io/io.h"
 #include "io_ompio.h"
 
-int mca_io_ompio_cycle_buffer_size = OMPIO_PREALLOC_MAX_BUF_SIZE;
+int mca_io_ompio_cycle_buffer_size = -1;
 int mca_io_ompio_bytes_per_agg = OMPIO_PREALLOC_MAX_BUF_SIZE;
 int mca_io_ompio_num_aggregators = -1;
 int mca_io_ompio_record_offset_info = 0;
@@ -55,20 +55,21 @@ file_query (struct ompi_file_t *file,
 static int file_unquery(struct ompi_file_t *file,
                         struct mca_io_base_file_t *private_data);
 
-static int delete_query(char *filename, struct ompi_info_t *info,
+static int delete_query(const char *filename, struct ompi_info_t *info,
                         struct mca_io_base_delete_t **private_data,
                         bool *usable, int *priorty);
 
-static int delete_select(char *filename, struct ompi_info_t *info,
+static int delete_select(const char *filename, struct ompi_info_t *info,
                          struct mca_io_base_delete_t *private_data);
-/*
-static int io_progress(void);
 
-static int register_datarep(char *,
+static int register_datarep(const char *,
                             MPI_Datarep_conversion_function*,
                             MPI_Datarep_conversion_function*,
                             MPI_Datarep_extent_function*,
                             void*);
+/*
+static int io_progress(void);
+
 */
 
 /*
@@ -125,6 +126,8 @@ mca_io_base_component_2_0_0_t mca_io_ompio_component = {
 
     .io_delete_query = delete_query,
     .io_delete_select = delete_select,
+
+    .io_register_datarep = register_datarep,
 };
 
 static int register_component(void)
@@ -136,7 +139,7 @@ static int register_component(void)
                                            OPAL_INFO_LVL_9,
                                            MCA_BASE_VAR_SCOPE_READONLY,
                                            &priority_param);
-    delete_priority_param = 10;
+    delete_priority_param = 30;
     (void) mca_base_component_var_register(&mca_io_ompio_component.io_version,
                                            "delete_priority", "Delete priority of the io ompio component",
                                            MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
@@ -162,10 +165,10 @@ static int register_component(void)
                                            MCA_BASE_VAR_SCOPE_READONLY,
                                            &mca_io_ompio_coll_timing_info);
 
-    mca_io_ompio_cycle_buffer_size = OMPIO_PREALLOC_MAX_BUF_SIZE;
+    mca_io_ompio_cycle_buffer_size = -1;
     (void) mca_base_component_var_register(&mca_io_ompio_component.io_version,
                                            "cycle_buffer_size",
-                                           "Cycle buffer size of individual reads/writes",
+                                           "Data size issued by individual reads/writes per call",
                                            MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
                                            OPAL_INFO_LVL_9,
                                            MCA_BASE_VAR_SCOPE_READONLY,
@@ -257,7 +260,7 @@ file_query(struct ompi_file_t *file,
     /* Allocate a space for this module to hang private data (e.g.,
        the OMPIO file handle) */
 
-    data = malloc(sizeof(mca_io_ompio_data_t));
+    data = calloc(1, sizeof(mca_io_ompio_data_t));
     if (NULL == data) {
         return NULL;
     }
@@ -284,7 +287,7 @@ static int file_unquery(struct ompi_file_t *file,
 }
 
 
-static int delete_query(char *filename, struct ompi_info_t *info,
+static int delete_query(const char *filename, struct ompi_info_t *info,
                         struct mca_io_base_delete_t **private_data,
                         bool *usable, int *priority)
 {
@@ -295,7 +298,7 @@ static int delete_query(char *filename, struct ompi_info_t *info,
     return OMPI_SUCCESS;
 }
 
-static int delete_select(char *filename, struct ompi_info_t *info,
+static int delete_select(const char *filename, struct ompi_info_t *info,
                          struct mca_io_base_delete_t *private_data)
 {
     int ret;
@@ -306,6 +309,16 @@ static int delete_select(char *filename, struct ompi_info_t *info,
 
     return ret;
 }
+
+static int register_datarep(const char * datarep,
+                            MPI_Datarep_conversion_function* read_fn,
+                            MPI_Datarep_conversion_function* write_fn,
+                            MPI_Datarep_extent_function* extent_fn,
+                            void* state)
+{
+    return OMPI_ERROR;
+}
+
 /*
 static int io_progress (void)
 {

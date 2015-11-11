@@ -15,7 +15,7 @@
  * Copyright (c) 2010-2015 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -239,8 +239,10 @@ static int mca_btl_vader_component_register (void)
     mca_btl_vader.super.btl_rdma_pipeline_send_length = mca_btl_vader.super.btl_eager_limit;
     mca_btl_vader.super.btl_rdma_pipeline_frag_size   = mca_btl_vader.super.btl_eager_limit;
 
+    mca_btl_vader.super.btl_flags = MCA_BTL_FLAGS_SEND_INPLACE | MCA_BTL_FLAGS_SEND;
+
     if (MCA_BTL_VADER_NONE != mca_btl_vader_component.single_copy_mechanism) {
-        mca_btl_vader.super.btl_flags     = MCA_BTL_FLAGS_RDMA | MCA_BTL_FLAGS_SEND_INPLACE;
+        mca_btl_vader.super.btl_flags    |= MCA_BTL_FLAGS_RDMA;
         /* Single copy mechanisms should provide better bandwidth */
         mca_btl_vader.super.btl_bandwidth = 40000; /* Mbs */
 
@@ -248,7 +250,6 @@ static int mca_btl_vader_component_register (void)
         mca_btl_vader.super.btl_get = (mca_btl_base_module_get_fn_t) mca_btl_vader_dummy_rdma;
         mca_btl_vader.super.btl_put = (mca_btl_base_module_get_fn_t) mca_btl_vader_dummy_rdma;
     } else {
-        mca_btl_vader.super.btl_flags     = MCA_BTL_FLAGS_SEND_INPLACE;
         mca_btl_vader.super.btl_bandwidth = 10000; /* Mbs */
     }
 
@@ -327,7 +328,7 @@ static int mca_btl_base_vader_modex_send (void)
     }
 #endif
 
-    OPAL_MODEX_SEND(rc, PMIX_SYNC_REQD, PMIX_LOCAL,
+    OPAL_MODEX_SEND(rc, OPAL_PMIX_LOCAL,
                     &mca_btl_vader_component.super.btl_version, &modex, modex_size);
 
     return rc;

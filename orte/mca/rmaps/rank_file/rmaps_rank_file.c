@@ -48,7 +48,6 @@
 #include "orte/mca/rmaps/rank_file/rmaps_rank_file.h"
 #include "orte/mca/rmaps/rank_file/rmaps_rank_file_lex.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/mca/ras/ras_types.h"
 
 static int orte_rmaps_rank_file_parse(const char *);
 static char *orte_rmaps_rank_file_parse_string_or_int(void);
@@ -81,9 +80,7 @@ static int orte_rmaps_rf_map(orte_job_t *jdata)
     mca_base_component_t *c = &mca_rmaps_rank_file_component.super.base_version;
     char *slots;
     bool initial_map=true;
-#if OPAL_HAVE_HWLOC
     opal_hwloc_resource_type_t rtype;
-#endif
 
     /* only handle initial launch of rf job */
     if (ORTE_FLAG_TEST(jdata, ORTE_JOB_FLAG_RESTART)) {
@@ -117,7 +114,6 @@ static int orte_rmaps_rf_map(orte_job_t *jdata)
     /* convenience def */
     map = jdata->map;
 
-#if OPAL_HAVE_HWLOC
     /* default to LOGICAL processors */
     if (mca_rmaps_rank_file_component.physical) {
         opal_output_verbose(5, orte_rmaps_base_framework.framework_output,
@@ -128,7 +124,6 @@ static int orte_rmaps_rf_map(orte_job_t *jdata)
                             "mca:rmaps:rank_file: using LOGICAL processors");
         rtype = OPAL_HWLOC_LOGICAL;
     }
-#endif
 
     /* setup the node list */
     OBJ_CONSTRUCT(&node_list, opal_list_t);
@@ -205,7 +200,6 @@ static int orte_rmaps_rf_map(orte_job_t *jdata)
                 orte_show_help("help-rmaps_rank_file.txt", "missing-rank", true, rank, orte_rankfile);
                 rc = ORTE_ERR_SILENT;
                 goto error;
-#if OPAL_HAVE_HWLOC
             } else {
                 if (0 == strlen(rfmap->slot_list)) {
                     /* rank was specified but no slot list given - that's an error */
@@ -214,7 +208,6 @@ static int orte_rmaps_rf_map(orte_job_t *jdata)
                     goto error;
                 }
                 slots = rfmap->slot_list;
-#endif
             }
 
             /* find the node where this proc was assigned */
@@ -277,7 +270,6 @@ static int orte_rmaps_rf_map(orte_job_t *jdata)
             /* set the vpid */
             proc->name.vpid = rank;
 
-#if OPAL_HAVE_HWLOC
             if (NULL != slots) {
                 /* setup the bitmap */
                 hwloc_cpuset_t bitmap;
@@ -308,17 +300,6 @@ static int orte_rmaps_rf_map(orte_job_t *jdata)
                 free(cpu_bitmap);
                 hwloc_bitmap_free(bitmap);
             }
-#else
-            /* if we don't have hwloc, then all the rank_file can contain
-             * is the node assignment - it cannot contain any directives
-             * for socket, cores, etc. as we cannot honor them
-             */
-            if (NULL != slots) {
-                orte_show_help("help-rmaps_rank_file.txt", "no-hwloc", true, rank, slots);
-                rc = ORTE_ERR_SILENT;
-                goto error;
-            }
-#endif
 
             /* insert the proc into the proper place */
             if (ORTE_SUCCESS != (rc = opal_pointer_array_set_item(jdata->procs,

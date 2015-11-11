@@ -37,7 +37,7 @@
 /* Todo: gather_intra_generic, gather_intra_binary, gather_intra_chain,
  * gather_intra_pipeline, segmentation? */
 int
-ompi_coll_base_gather_intra_binomial(void *sbuf, int scount,
+ompi_coll_base_gather_intra_binomial(const void *sbuf, int scount,
                                       struct ompi_datatype_t *sdtype,
                                       void *rbuf, int rcount,
                                       struct ompi_datatype_t *rdtype,
@@ -76,7 +76,7 @@ ompi_coll_base_gather_intra_binomial(void *sbuf, int scount,
             /* root on 0, just use the recv buffer */
             ptmp = (char *) rbuf;
             if (sbuf != MPI_IN_PLACE) {
-                err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
+                err = ompi_datatype_sndrcv((void *)sbuf, scount, sdtype,
                                            ptmp, rcount, rdtype);
                 if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
             }
@@ -91,7 +91,7 @@ ompi_coll_base_gather_intra_binomial(void *sbuf, int scount,
             ptmp = tempbuf - rtrue_lb;
             if (sbuf != MPI_IN_PLACE) {
                 /* copy from sbuf to temp buffer */
-                err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
+                err = ompi_datatype_sndrcv((void *)sbuf, scount, sdtype,
                                            ptmp, rcount, rdtype);
                 if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
             } else {
@@ -113,7 +113,7 @@ ompi_coll_base_gather_intra_binomial(void *sbuf, int scount,
 
         ptmp = tempbuf - strue_lb;
         /* local copy to tempbuf */
-        err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
+        err = ompi_datatype_sndrcv((void *)sbuf, scount, sdtype,
                                    ptmp, scount, sdtype);
         if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl; }
 
@@ -204,7 +204,7 @@ ompi_coll_base_gather_intra_binomial(void *sbuf, int scount,
  *	Returns:	- MPI_SUCCESS or error code
  */
 int
-ompi_coll_base_gather_intra_linear_sync(void *sbuf, int scount,
+ompi_coll_base_gather_intra_linear_sync(const void *sbuf, int scount,
                                          struct ompi_datatype_t *sdtype,
                                          void *rbuf, int rcount,
                                          struct ompi_datatype_t *rdtype,
@@ -237,7 +237,7 @@ ompi_coll_base_gather_intra_linear_sync(void *sbuf, int scount,
         COLL_BASE_COMPUTED_SEGCOUNT( (size_t) first_segment_size, typelng,
                                       first_segment_count );
 
-        ret = MCA_PML_CALL(recv(sbuf, 0, MPI_BYTE, root,
+        ret = MCA_PML_CALL(recv(rbuf, 0, MPI_BYTE, root,
                                 MCA_COLL_BASE_TAG_GATHER,
                                 comm, MPI_STATUS_IGNORE));
         if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
@@ -266,7 +266,7 @@ ompi_coll_base_gather_intra_linear_sync(void *sbuf, int scount,
         */
         char *ptmp;
         ompi_request_t *first_segment_req;
-        reqs = (ompi_request_t**) calloc(size, sizeof(ompi_request_t*));
+        reqs = coll_base_comm_get_reqs(module->base_data, size);
         if (NULL == reqs) { ret = -1; line = __LINE__; goto error_hndl; }
 
         ompi_datatype_type_size(rdtype, &typelng);
@@ -310,7 +310,7 @@ ompi_coll_base_gather_intra_linear_sync(void *sbuf, int scount,
 
         /* copy local data if necessary */
         if (MPI_IN_PLACE != sbuf) {
-            ret = ompi_datatype_sndrcv(sbuf, scount, sdtype,
+            ret = ompi_datatype_sndrcv((void *)sbuf, scount, sdtype,
                                        (char*)rbuf + (ptrdiff_t)rank * (ptrdiff_t)rcount * extent,
                                        rcount, rdtype);
             if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
@@ -319,16 +319,13 @@ ompi_coll_base_gather_intra_linear_sync(void *sbuf, int scount,
         /* wait all second segments to complete */
         ret = ompi_request_wait_all(size, reqs, MPI_STATUSES_IGNORE);
         if (ret != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
-
-        free(reqs);
     }
 
     /* All done */
-
     return MPI_SUCCESS;
  error_hndl:
     if (NULL != reqs) {
-        free(reqs);
+        ompi_coll_base_free_reqs(reqs, size);
     }
     OPAL_OUTPUT (( ompi_coll_base_framework.framework_output,
                    "ERROR_HNDL: node %d file %s line %d error %d\n",
@@ -357,7 +354,7 @@ ompi_coll_base_gather_intra_linear_sync(void *sbuf, int scount,
  *	Returns:	- MPI_SUCCESS or error code
  */
 int
-ompi_coll_base_gather_intra_basic_linear(void *sbuf, int scount,
+ompi_coll_base_gather_intra_basic_linear(const void *sbuf, int scount,
                                           struct ompi_datatype_t *sdtype,
                                           void *rbuf, int rcount,
                                           struct ompi_datatype_t *rdtype,
@@ -389,7 +386,7 @@ ompi_coll_base_gather_intra_basic_linear(void *sbuf, int scount,
     for (i = 0, ptmp = (char *) rbuf; i < size; ++i, ptmp += incr) {
         if (i == rank) {
             if (MPI_IN_PLACE != sbuf) {
-                err = ompi_datatype_sndrcv(sbuf, scount, sdtype,
+                err = ompi_datatype_sndrcv((void *)sbuf, scount, sdtype,
                                            ptmp, rcount, rdtype);
             } else {
                 err = MPI_SUCCESS;
@@ -405,7 +402,6 @@ ompi_coll_base_gather_intra_basic_linear(void *sbuf, int scount,
     }
 
     /* All done */
-
     return MPI_SUCCESS;
 }
 

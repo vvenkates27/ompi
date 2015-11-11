@@ -9,7 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,12 +26,11 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/errhandler/errhandler.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Get_library_version = PMPI_Get_library_version
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Get_library_version PMPI_Get_library_version
 #endif
 
 static const char FUNC_NAME[] = "MPI_Get_library_version";
@@ -74,45 +75,40 @@ int MPI_Get_library_version(char *version, int *resultlen)
     len_left = sizeof(tmp);
     memset(tmp, 0, MPI_MAX_LIBRARY_VERSION_STRING);
 
-    snprintf(tmp, MPI_MAX_LIBRARY_VERSION_STRING, "Open MPI v%d.%d",
-             OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION);
+    snprintf(tmp, MPI_MAX_LIBRARY_VERSION_STRING, "Open MPI v%d.%d.%d",
+             OMPI_MAJOR_VERSION, OMPI_MINOR_VERSION, OMPI_RELEASE_VERSION);
     ptr += strlen(tmp);
     len_left -= strlen(tmp);
 
-    if (OMPI_RELEASE_VERSION > 0) {
-        snprintf(ptr, len_left, ".%d", OMPI_RELEASE_VERSION);
-        ptr = tmp + strlen(tmp);
-        len_left = MPI_MAX_LIBRARY_VERSION_STRING - strlen(tmp);
-    }
-    if (NULL != OMPI_GREEK_VERSION && strlen(OMPI_GREEK_VERSION) > 0) {
+    if (strlen(OMPI_GREEK_VERSION) > 0) {
         snprintf(ptr, len_left, "%s", OMPI_GREEK_VERSION);
         ptr = tmp + strlen(tmp);
         len_left = MPI_MAX_LIBRARY_VERSION_STRING - strlen(tmp);
     }
 
     /* Package name */
-    if (NULL != OPAL_PACKAGE_STRING && strlen(OPAL_PACKAGE_STRING) > 0) {
+    if (strlen(OPAL_PACKAGE_STRING) > 0) {
         snprintf(ptr, len_left, ", package: %s", OPAL_PACKAGE_STRING);
         ptr = tmp + strlen(tmp);
         len_left = MPI_MAX_LIBRARY_VERSION_STRING - strlen(tmp);
     }
 
     /* Ident string */
-    if (NULL != OMPI_IDENT_STRING && strlen(OMPI_IDENT_STRING) > 0) {
+    if (strlen(OMPI_IDENT_STRING) > 0) {
         snprintf(ptr, len_left, ", ident: %s", OMPI_IDENT_STRING);
         ptr = tmp + strlen(tmp);
         len_left = MPI_MAX_LIBRARY_VERSION_STRING - strlen(tmp);
     }
 
     /* Repository revision */
-    if (NULL != OMPI_REPO_REV && strlen(OMPI_REPO_REV) > 0) {
+    if (strlen(OMPI_REPO_REV) > 0) {
         snprintf(ptr, len_left, ", repo rev: %s", OMPI_REPO_REV);
         ptr = tmp + strlen(tmp);
         len_left = MPI_MAX_LIBRARY_VERSION_STRING - strlen(tmp);
     }
 
     /* Release date */
-    if (NULL != OMPI_RELEASE_DATE && strlen(OMPI_RELEASE_DATE) > 0) {
+    if (strlen(OMPI_RELEASE_DATE) > 0) {
         snprintf(ptr, len_left, ", %s", OMPI_RELEASE_DATE);
         ptr = tmp + strlen(tmp);
         len_left = MPI_MAX_LIBRARY_VERSION_STRING - strlen(tmp);

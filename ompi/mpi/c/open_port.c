@@ -9,6 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2015      Intel, Inc. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,14 +26,13 @@
 #include "ompi/communicator/communicator.h"
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/info/info.h"
-#include "ompi/mca/dpm/dpm.h"
+#include "ompi/dpm/dpm.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Open_port = PMPI_Open_port
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Open_port PMPI_Open_port
 #endif
 
 static const char FUNC_NAME[] = "MPI_Open_port";
@@ -66,7 +68,7 @@ int MPI_Open_port(MPI_Info info, char *port_name)
 
     OPAL_CR_ENTER_LIBRARY();
 
-    rc = ompi_dpm.open_port(port_name, OMPI_RML_TAG_INVALID);
+    rc = ompi_dpm_open_port(port_name);
 
     OMPI_ERRHANDLER_RETURN(rc, MPI_COMM_WORLD, rc, FUNC_NAME);
 }

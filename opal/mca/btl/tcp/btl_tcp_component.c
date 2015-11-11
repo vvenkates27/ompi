@@ -16,7 +16,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2013-2015 NVIDIA Corporation.  All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
@@ -269,7 +269,8 @@ static int mca_btl_tcp_component_register(void)
                                        MCA_BTL_FLAGS_SEND_INPLACE |
                                        MCA_BTL_FLAGS_NEED_CSUM |
                                        MCA_BTL_FLAGS_NEED_ACK |
-                                       MCA_BTL_FLAGS_HETEROGENEOUS_RDMA;
+                                       MCA_BTL_FLAGS_HETEROGENEOUS_RDMA |
+                                       MCA_BTL_FLAGS_SEND;
 
     mca_btl_tcp_module.super.btl_bandwidth = 100;
     mca_btl_tcp_module.super.btl_latency = 100;
@@ -818,7 +819,7 @@ static int mca_btl_tcp_component_create_listen(uint16_t af_family)
     /* register listen port */
 #if OPAL_ENABLE_IPV6
     if (AF_INET6 == af_family) {
-        opal_event_set(opal_event_base, &mca_btl_tcp_component.tcp6_recv_event,
+        opal_event_set(opal_sync_event_base, &mca_btl_tcp_component.tcp6_recv_event,
                         mca_btl_tcp_component.tcp6_listen_sd,
                         OPAL_EV_READ|OPAL_EV_PERSIST,
                         mca_btl_tcp_component_accept_handler,
@@ -827,7 +828,7 @@ static int mca_btl_tcp_component_create_listen(uint16_t af_family)
     } else
 #endif
     {
-        opal_event_set(opal_event_base, &mca_btl_tcp_component.tcp_recv_event,
+        opal_event_set(opal_sync_event_base, &mca_btl_tcp_component.tcp_recv_event,
                         mca_btl_tcp_component.tcp_listen_sd,
                         OPAL_EV_READ|OPAL_EV_PERSIST,
                         mca_btl_tcp_component_accept_handler,
@@ -917,7 +918,7 @@ static int mca_btl_tcp_component_exchange(void)
                  }
              } /* end of for opal_ifbegin() */
          } /* end of for tcp_num_btls */
-         OPAL_MODEX_SEND(rc, PMIX_SYNC_REQD, PMIX_GLOBAL,
+         OPAL_MODEX_SEND(rc, OPAL_PMIX_GLOBAL,
                          &mca_btl_tcp_component.super.btl_version,
                          addrs, xfer_size);
          free(addrs);
@@ -1049,7 +1050,7 @@ static void mca_btl_tcp_component_accept_handler( int incoming_sd,
 
         /* wait for receipt of peers process identifier to complete this connection */
         event = OBJ_NEW(mca_btl_tcp_event_t);
-        opal_event_set(opal_event_base, &event->event, sd, OPAL_EV_READ, mca_btl_tcp_component_recv_handler, event);
+        opal_event_set(opal_sync_event_base, &event->event, sd, OPAL_EV_READ, mca_btl_tcp_component_recv_handler, event);
         opal_event_add(&event->event, 0);
     }
 }

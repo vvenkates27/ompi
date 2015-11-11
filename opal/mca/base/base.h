@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2013-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * $COPYRIGHT$
  *
@@ -70,6 +70,30 @@ OPAL_DECLSPEC extern char *mca_base_system_default_path;
 OPAL_DECLSPEC extern char *mca_base_user_default_path;
 
 /*
+ * Standard verbosity levels
+ */
+enum {
+    /** total silence */
+    MCA_BASE_VERBOSE_NONE  = -1,
+    /** only errors are printed */
+    MCA_BASE_VERBOSE_ERROR = 0,
+    /** emit messages about component selection, open, and unloading */
+    MCA_BASE_VERBOSE_COMPONENT = 10,
+    /** also emit warnings */
+    MCA_BASE_VERBOSE_WARN  = 20,
+    /** also emit general, user-relevant information, such as rationale as to why certain choices
+     * or code paths were taken, information gleaned from probing the local system, etc. */
+    MCA_BASE_VERBOSE_INFO  = 40,
+    /** also emit relevant tracing information (e.g., which functions were invoked /
+     * call stack entry/exit info) */
+    MCA_BASE_VERBOSE_TRACE = 60,
+    /** also emit Open MPI-developer-level (i.e,. highly detailed) information */
+    MCA_BASE_VERBOSE_DEBUG = 80,
+    /** also output anything else that might be useful */
+    MCA_BASE_VERBOSE_MAX   = 100,
+};
+
+/*
  * Public functions
  */
 
@@ -110,7 +134,8 @@ OPAL_DECLSPEC int mca_base_close(void);
 OPAL_DECLSPEC int mca_base_select(const char *type_name, int output_id,
                                   opal_list_t *components_available,
                                   mca_base_module_t **best_module,
-                                  mca_base_component_t **best_component);
+                                  mca_base_component_t **best_component,
+                                  int *priority_out);
 
 /**
  * A function for component query functions to discover if they have

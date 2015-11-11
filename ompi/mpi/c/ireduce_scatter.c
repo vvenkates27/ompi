@@ -13,6 +13,8 @@
  * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/op/op.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Ireduce_scatter = PMPI_Ireduce_scatter
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Ireduce_scatter PMPI_Ireduce_scatter
 #endif
 
 static const char FUNC_NAME[] = "MPI_Ireduce_scatter";
@@ -114,8 +115,7 @@ int MPI_Ireduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts
     /* Invoke the coll component to perform the back-end operation */
 
     OBJ_RETAIN(op);
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_ireduce_scatter((void *) sendbuf, recvbuf, (int *) recvcounts,
+    err = comm->c_coll.coll_ireduce_scatter(sendbuf, recvbuf, recvcounts,
                                             datatype, op, comm, request,
                                             comm->c_coll.coll_ireduce_scatter_module);
     OBJ_RELEASE(op);

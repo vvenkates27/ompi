@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2013      NVIDIA Corporation.  All rights reserved.
@@ -64,6 +64,8 @@ int ompi_mpi_event_tick_rate = -1;
 char *ompi_mpi_show_mca_params_string = NULL;
 bool ompi_mpi_have_sparse_group_storage = !!(OMPI_GROUP_SPARSE);
 bool ompi_mpi_preconnect_mpi = false;
+uint32_t ompi_add_procs_cutoff = 1024;
+bool ompi_mpi_dynamics_enabled = true;
 
 static bool show_default_mca_params = false;
 static bool show_file_mca_params = false;
@@ -287,6 +289,23 @@ int ompi_mpi_register_params(void)
                        true);
         ompi_rte_abort(1, NULL);
     }
+
+    ompi_add_procs_cutoff = 1024;
+    (void) mca_base_var_register ("ompi", "mpi", NULL, "add_procs_cutoff",
+                                  "Maximum world size for pre-allocating resources for all "
+                                  "remote processes. Increasing this limit may improve "
+                                  "communication performance at the cost of memory usage "
+                                  "(default: 1024)", MCA_BASE_VAR_TYPE_UNSIGNED_INT, NULL,
+                                  0, 0, OPAL_INFO_LVL_3, MCA_BASE_VAR_SCOPE_LOCAL,
+                                  &ompi_add_procs_cutoff);
+
+    ompi_mpi_dynamics_enabled = true;
+    (void) mca_base_var_register("ompi", "mpi", NULL, "dynamics_enabled",
+                                 "Is the MPI dynamic process functionality enabled (e.g., MPI_COMM_SPAWN)?  Default is yes, but certain transports and/or environments may disable it.",
+                                 MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                 OPAL_INFO_LVL_4,
+                                 MCA_BASE_VAR_SCOPE_READONLY,
+                                 &ompi_mpi_dynamics_enabled);
 
     return OMPI_SUCCESS;
 }

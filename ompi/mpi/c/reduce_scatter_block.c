@@ -14,6 +14,8 @@
  * Copyright (c) 2012      Oak Ridge National Labs. All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,12 +33,11 @@
 #include "ompi/op/op.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Reduce_scatter_block = PMPI_Reduce_scatter_block
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Reduce_scatter_block PMPI_Reduce_scatter_block
 #endif
 
 static const char FUNC_NAME[] = "MPI_Reduce_scatter_block";
@@ -96,8 +97,7 @@ int MPI_Reduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount,
     /* Invoke the coll component to perform the back-end operation */
 
     OBJ_RETAIN(op);
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_reduce_scatter_block((void *) sendbuf, recvbuf, recvcount,
+    err = comm->c_coll.coll_reduce_scatter_block(sendbuf, recvbuf, recvcount,
                                                  datatype, op, comm,
                                                  comm->c_coll.coll_reduce_scatter_block_module);
     OBJ_RELEASE(op);

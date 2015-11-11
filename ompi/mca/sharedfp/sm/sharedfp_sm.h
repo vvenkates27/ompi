@@ -10,6 +10,9 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2015 University of Houston. All rights reserved.
+ * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -52,7 +55,7 @@ int mca_sharedfp_sm_seek (mca_io_ompio_file_t *fh,
 int mca_sharedfp_sm_get_position (mca_io_ompio_file_t *fh,
                                           OMPI_MPI_OFFSET_TYPE * offset);
 int mca_sharedfp_sm_file_open (struct ompi_communicator_t *comm,
-                                       char* filename,
+                                       const char* filename,
                                        int amode,
                                        struct ompi_info_t *info,
                                        mca_io_ompio_file_t *fh);
@@ -76,33 +79,32 @@ int mca_sharedfp_sm_iread (mca_io_ompio_file_t *fh,
                                     struct ompi_datatype_t *datatype,
                                     ompi_request_t **request);
 int mca_sharedfp_sm_write (mca_io_ompio_file_t *fh,
-                                   void *buf,
+                                   const void *buf,
                                    int count,
                                    struct ompi_datatype_t *datatype,
                                    ompi_status_public_t *status);
 int mca_sharedfp_sm_write_ordered (mca_io_ompio_file_t *fh,
-                                           void *buf,
+                                           const void *buf,
                                            int count,
                                            struct ompi_datatype_t *datatype,
                                            ompi_status_public_t *status);
 int mca_sharedfp_sm_write_ordered_begin (mca_io_ompio_file_t *fh,
-                                                 void *buf,
+                                                 const void *buf,
                                                  int count,
                                                  struct ompi_datatype_t *datatype);
 int mca_sharedfp_sm_write_ordered_end (mca_io_ompio_file_t *fh,
-                                               void *buf,
+                                               const void *buf,
                                                ompi_status_public_t *status);
 int mca_sharedfp_sm_iwrite (mca_io_ompio_file_t *fh,
-                                    void *buf,
+                                    const void *buf,
                                     int count,
                                     struct ompi_datatype_t *datatype,
                                     ompi_request_t **request);
 /*--------------------------------------------------------------*
  *Structures and definitions only for this component
  *--------------------------------------------------------------*/
-
-struct sm_offset{
-    sem_t *mutex;      /* the mutex: a Posix memory-based unnamed semaphore */
+struct mca_sharedfp_sm_offset{
+    sem_t mutex;      /* the mutex: a POSIX memory-based unnamed semaphore */
     long long offset;  /* and the shared file pointer offset */
 };
 
@@ -111,10 +113,13 @@ struct sm_offset{
  */
 struct mca_sharedfp_sm_data
 {
-    struct sm_offset * sm_offset_ptr;
+    struct mca_sharedfp_sm_offset * sm_offset_ptr;
     /*save filename so that we can remove the file on close*/
     char * sm_filename;
-    sem_t *mutex;      /* the mutex: a Posix memory-based named semaphore */
+    /* The mutex: it will either point to a POSIX memory-based named
+       semaphore, or it will point to the a POSIX memory-based unnamed
+       semaphore located in sm_offset_ptr->mutex. */
+    sem_t *mutex;
     char *sem_name;    /* Name of the semaphore */
 };
 

@@ -126,9 +126,13 @@ mpi_api_man_pages = \
         mpi/man/man3/MPI_File_get_view.3 \
         mpi/man/man3/MPI_File_iread.3 \
         mpi/man/man3/MPI_File_iread_at.3 \
+        mpi/man/man3/MPI_File_iread_all.3 \
+        mpi/man/man3/MPI_File_iread_at_all.3 \
         mpi/man/man3/MPI_File_iread_shared.3 \
         mpi/man/man3/MPI_File_iwrite.3 \
         mpi/man/man3/MPI_File_iwrite_at.3 \
+        mpi/man/man3/MPI_File_iwrite_all.3 \
+        mpi/man/man3/MPI_File_iwrite_at_all.3 \
         mpi/man/man3/MPI_File_iwrite_shared.3 \
         mpi/man/man3/MPI_File_open.3 \
         mpi/man/man3/MPI_File_preallocate.3 \
@@ -231,6 +235,8 @@ mpi_api_man_pages = \
         mpi/man/man3/MPI_Keyval_create.3 \
         mpi/man/man3/MPI_Keyval_free.3 \
         mpi/man/man3/MPI_Lookup_name.3 \
+        mpi/man/man3/MPI_Message_c2f.3 \
+        mpi/man/man3/MPI_Message_f2c.3 \
         mpi/man/man3/MPI_Mprobe.3 \
         mpi/man/man3/MPI_Mrecv.3 \
         mpi/man/man3/MPI_Neighbor_allgather.3 \
@@ -244,6 +250,7 @@ mpi_api_man_pages = \
         mpi/man/man3/MPI_Neighbor_alltoallw.3 \
         mpi/man/man3/MPI_Ineighbor_alltoallw.3 \
         mpi/man/man3/MPI_Op_c2f.3 \
+        mpi/man/man3/MPI_Op_commutative.3 \
         mpi/man/man3/MPI_Op_create.3 \
         mpi/man/man3/MPI_Open_port.3 \
         mpi/man/man3/MPI_Op_f2c.3 \
@@ -379,6 +386,8 @@ mpi_api_man_pages = \
         mpi/man/man3/MPI_Waitall.3 \
         mpi/man/man3/MPI_Waitany.3 \
         mpi/man/man3/MPI_Waitsome.3 \
+        mpi/man/man3/MPI_Win_allocate.3 \
+        mpi/man/man3/MPI_Win_allocate_shared.3 \
         mpi/man/man3/MPI_Win_attach.3 \
         mpi/man/man3/MPI_Win_c2f.3 \
         mpi/man/man3/MPI_Win_call_errhandler.3 \
@@ -409,6 +418,7 @@ mpi_api_man_pages = \
         mpi/man/man3/MPI_Win_set_errhandler.3 \
         mpi/man/man3/MPI_Win_set_info.3 \
         mpi/man/man3/MPI_Win_set_name.3 \
+        mpi/man/man3/MPI_Win_shared_query.3 \
         mpi/man/man3/MPI_Win_start.3 \
         mpi/man/man3/MPI_Win_sync.3 \
         mpi/man/man3/MPI_Win_test.3 \

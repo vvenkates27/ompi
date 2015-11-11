@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2013-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * $COPYRIGHT$
  *
@@ -41,6 +41,16 @@ BEGIN_C_DECLS
 #define OMPI_WIN_FREED        0x00000001
 #define OMPI_WIN_INVALID      0x00000002
 #define OMPI_WIN_NO_LOCKS     0x00000004
+#define OMPI_WIN_SAME_DISP    0x00000008
+#define OMPI_WIN_SAME_SIZE    0x00000010
+
+enum ompi_win_accumulate_ops_t {
+    OMPI_WIN_ACCUMULATE_OPS_SAME_OP_NO_OP,
+    OMPI_WIN_ACCUMULATE_OPS_SAME_OP,
+};
+typedef enum ompi_win_accumulate_ops_t ompi_win_accumulate_ops_t;
+
+OMPI_DECLSPEC extern mca_base_var_enum_t *ompi_win_accumulate_ops;
 
 OMPI_DECLSPEC extern opal_pointer_array_t ompi_mpi_windows;
 
@@ -56,6 +66,12 @@ struct ompi_win_t {
 
     /* Information about the state of the window.  */
     uint16_t w_flags;
+
+    /** Window flavor */
+    uint16_t w_flavor;
+
+    /** Accumulate ops */
+    ompi_win_accumulate_ops_t w_acc_ops;
 
     /* Attributes */
     opal_hash_table_t *w_keyhash;

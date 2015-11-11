@@ -13,7 +13,7 @@
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2014      Research Organization for Information Science
+ * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
@@ -33,12 +33,11 @@
 #include "ompi/memchecker.h"
 #include "ompi/communicator/comm_helpers.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Neighbor_alltoallw = PMPI_Neighbor_alltoallw
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Neighbor_alltoallw PMPI_Neighbor_alltoallw
 #endif
 
 static const char FUNC_NAME[] = "MPI_Neighbor_alltoallw";
@@ -87,21 +86,15 @@ int MPI_Neighbor_alltoallw(const void *sendbuf, const int sendcounts[], const MP
 
         err = MPI_SUCCESS;
         OMPI_ERR_INIT_FINALIZE(FUNC_NAME);
-        if (ompi_comm_invalid(comm) || !(OMPI_COMM_IS_CART(comm) || OMPI_COMM_IS_GRAPH(comm) ||
-                                         OMPI_COMM_IS_DIST_GRAPH(comm))) {
+        if (ompi_comm_invalid(comm) || OMPI_COMM_IS_INTER(comm)) {
             return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_COMM,
                                           FUNC_NAME);
-        }
-
-        if (MPI_IN_PLACE == sendbuf) {
-            sendcounts = recvcounts;
-            sdispls    = rdispls;
-            sendtypes  = recvtypes;
-        }
-
-        if ((NULL == sendcounts) || (NULL == sdispls) || (NULL == sendtypes) ||
+        } else if (! OMPI_COMM_IS_TOPO(comm)) {
+            return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_TOPOLOGY,
+                                          FUNC_NAME);
+        } else if ((NULL == sendcounts) || (NULL == sdispls) || (NULL == sendtypes) ||
             (NULL == recvcounts) || (NULL == rdispls) || (NULL == recvtypes) ||
-             MPI_IN_PLACE == recvbuf) {
+             MPI_IN_PLACE == sendbuf || MPI_IN_PLACE == recvbuf) {
             return OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_ARG, FUNC_NAME);
         }
 
@@ -120,9 +113,8 @@ int MPI_Neighbor_alltoallw(const void *sendbuf, const int sendcounts[], const MP
     OPAL_CR_ENTER_LIBRARY();
 
     /* Invoke the coll component to perform the back-end operation */
-    /* XXX -- CONST -- do not cast away const -- update mca/coll */
-    err = comm->c_coll.coll_neighbor_alltoallw((void *) sendbuf, (int *) sendcounts, (MPI_Aint *) sdispls, (ompi_datatype_t **) sendtypes,
-                                               recvbuf, (int *) recvcounts, (MPI_Aint *) rdispls, (ompi_datatype_t **) recvtypes,
+    err = comm->c_coll.coll_neighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes,
+                                               recvbuf, recvcounts, rdispls, recvtypes,
                                                comm, comm->c_coll.coll_neighbor_alltoallw_module);
     OMPI_ERRHANDLER_RETURN(err, comm, err, FUNC_NAME);
 }

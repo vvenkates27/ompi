@@ -37,7 +37,7 @@ build_root=/home/mpiteam/openmpi/nightly-tarball-build-root
 
 # Coverity stuff
 coverity_token=`cat $HOME/coverity/openmpi-token.txt`
-coverity_configure_args="--enable-mpi-fortran --enable-mpi-java --enable-oshmem --enable-oshmem-fortran --enable-oshmem-java --with-mxm=/opt/mellanox/mxm --with-psm --with-usnic"
+coverity_configure_args="--enable-mpi-fortran --enable-mpi-java --enable-oshmem --enable-oshmem-fortran --enable-oshmem-java --with-mxm=/opt/mellanox/mxm --with-psm --with-usnic --with-libfabric=/u/mpiteam/libfabric-current/install"
 
 export PATH=$HOME/local/bin:$PATH
 export LD_LIBRARY_PATH=$HOME/local/lib:$LD_LIBRARY_PATH
@@ -63,8 +63,10 @@ touch $pending_coverity
 # Loop making the tarballs
 module unload autotools
 for branch in $branches; do
+    echo "=== Branch: $branch"
     # Get the last tarball version that was made
     prev_snapshot=`cat $outputroot/$branch/latest_snapshot.txt`
+    echo "=== Previous snapshot: $prev_snapshot"
 
     if test "$branch" = "master"; then
         code_uri=$master_code_uri
@@ -108,21 +110,26 @@ for branch in $branches; do
     # spawn the coverity checker on it afterwards.  Only for this for the
     # master (for now).
     latest_snapshot=`cat $outputroot/$branch/latest_snapshot.txt`
+    echo "=== Latest snapshot: $latest_snapshot"
     if test "$prev_snapshot" != "$latest_snapshot" && \
         test "$branch" = "master"; then
+        echo "=== Saving output for a Coverity run"
         echo "$outputroot/$branch/openmpi-$latest_snapshot.tar.bz2" >> $pending_coverity
+    else
+        echo "=== NOT saving output for a Coverity run"
     fi
 
     # Failed builds are not removed.  But if a human forgets to come
     # in here and clean up the old failed builds, we can accumulate
     # many over time.  So remove any old failed bbuilds that are over
     # 4 weeks old.
-    ${script_dir}/remove-old.pl 28 $build_root/$branch
+    ${script_dir}/remove-old.pl 7 $build_root/$branch
 done
 
 # If we had any new snapshots to send to coverity, process them now
 
 for tarball in `cat $pending_coverity`; do
+    echo "=== Submitting $tarball to Coverity..."
     $HOME/scripts/openmpi-nightly-coverity.pl \
         --filename=$tarball \
         --coverity-token=$coverity_token \

@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2015 University of Houston. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,6 +33,14 @@ extern int mca_fs_lustre_stripe_width;
 
 BEGIN_C_DECLS
 
+#include <lustre/liblustreapi.h>
+#include <lustre/lustre_user.h>
+
+#ifndef LOV_MAX_STRIPE_COUNT
+#define LOV_MAX_STRIPE_COUNT 160
+#endif
+
+
 int mca_fs_lustre_component_init_query(bool enable_progress_threads,
                                         bool enable_mpi_threads);
 struct mca_fs_base_module_1_0_0_t *
@@ -48,7 +58,7 @@ OMPI_MODULE_DECLSPEC extern mca_fs_base_component_2_0_0_t mca_fs_lustre_componen
  */
 
 int mca_fs_lustre_file_open (struct ompi_communicator_t *comm,
-                             char *filename,
+                             const char *filename,
                              int amode,
                              struct ompi_info_t *info,
                              mca_io_ompio_file_t *fh);

@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2013      University of Houston. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,7 +55,7 @@ int mca_sharedfp_individual_get_position(mca_io_ompio_file_t *fh,
 int mca_sharedfp_individual_seek (mca_io_ompio_file_t *fh,
                                   OMPI_MPI_OFFSET_TYPE offset, int whence);
 int mca_sharedfp_individual_file_open (struct ompi_communicator_t *comm,
-                                       char* filename,
+                                       const char* filename,
                                        int amode,
                                        struct ompi_info_t *info,
                                        mca_io_ompio_file_t *fh);
@@ -76,24 +78,24 @@ int mca_sharedfp_individual_iread (mca_io_ompio_file_t *fh,
                                     struct ompi_datatype_t *datatype,
                                     ompi_request_t **request);
 int mca_sharedfp_individual_write (mca_io_ompio_file_t *fh,
-                                   void *buf,
+                                   const void *buf,
                                    int count,
                                    struct ompi_datatype_t *datatype,
                                    ompi_status_public_t *status);
 int mca_sharedfp_individual_write_ordered (mca_io_ompio_file_t *fh,
-                                           void *buf,
+                                           const void *buf,
                                            int count,
                                            struct ompi_datatype_t *datatype,
                                            ompi_status_public_t *status);
 int mca_sharedfp_individual_write_ordered_begin (mca_io_ompio_file_t *fh,
-                                                 void *buf,
+                                                 const void *buf,
                                                  int count,
                                                  struct ompi_datatype_t *datatype);
 int mca_sharedfp_individual_write_ordered_end (mca_io_ompio_file_t *fh,
-                                               void *buf,
+                                               const void *buf,
                                                ompi_status_public_t *status);
 int mca_sharedfp_individual_iwrite (mca_io_ompio_file_t *fh,
-                                    void *buf,
+                                    const void *buf,
                                     int count,
                                     struct ompi_datatype_t *datatype,
                                     ompi_request_t **request);
@@ -139,9 +141,9 @@ mca_sharedfp_individual_header_record* mca_sharedfp_individual_insert_headnode(v
 int mca_sharedfp_individual_collaborate_data(struct mca_sharedfp_base_data_t *sh);
 int mca_sharedfp_individual_get_timestamps_and_reclengths(double **buff, long **rec_length, MPI_Offset **offbuff,struct mca_sharedfp_base_data_t *sh);
 int mca_sharedfp_individual_create_buff(double **ts,MPI_Offset **off,int totalnodes,int size);
-int mca_sharedfp_individual_sort_timestamps(double **ts,MPI_Offset **off, int totalnodes);
+int mca_sharedfp_individual_sort_timestamps(double **ts,MPI_Offset **off, int **ranks, int totalnodes);
 MPI_Offset  mca_sharedfp_individual_assign_globaloffset(MPI_Offset **offsetbuff,int totalnodes,struct mca_sharedfp_base_data_t *sh);
-int mca_sharedfp_individual_getoffset(double timestamp, double *ts, int totalnodes);
+int mca_sharedfp_individual_getoffset(double timestamp, double *ts, int *ranks, int myrank, int totalnodes);
 /*int mca_sharedfp_individual_cleanup(double *ts, int* rnk, MPI_Offset *off);*/
 
 int mca_sharedfp_individual_insert_metadata(int functype,long recordlength,struct mca_sharedfp_base_data_t *sh );

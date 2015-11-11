@@ -5,6 +5,10 @@
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
 # Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
+# Copyright (c) 2015      Research Organization for Information Science
+#                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2015      IBM Corporation.  All rights reserved.
+#
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -180,7 +184,6 @@ sub process_subdir {
         print "--- Found configure.in|ac; running autoreconf...\n";
         safe_system("autoreconf -ivf");
         print "--- Patching autotools output... :-(\n";
-        patch_autotools_output($start);
     } else {
         my_die "Found subdir, but no autogen.sh or configure.in|ac to do anything";
     }
@@ -188,6 +191,9 @@ sub process_subdir {
     # Ensure that we got a good configure executable.
     my_die "Did not generate a \"configure\" executable in $dir.\n"
         if (! -x "configure");
+
+    # Fix known issues in Autotools output
+    patch_autotools_output($start);
 
     # Chdir back to where we came from
     chdir($start);
@@ -900,6 +906,11 @@ sub patch_autotools_output {
         unlink("config/ltmain.sh.rej");
     }
 
+    # If there's no configure script, there's nothing else to do.
+    return
+        if (! -f "configure");
+    my @verbose_out;
+
     # Total ugh.  We have to patch the configure script itself.  See below
     # for explainations why.
     open(IN, "configure") || my_die "Can't open configure";
@@ -907,6 +918,7 @@ sub patch_autotools_output {
     $c .= $_
         while(<IN>);
     close(IN);
+    my $c_orig = $c;
 
     # LT <=2.2.6b need to be patched for the PGI 10.0 fortran compiler
     # name (pgfortran).  The following comes from the upstream LT patches:
@@ -915,7 +927,7 @@ sub patch_autotools_output {
     # Note that that patch is part of Libtool (which is not in this OMPI
     # source tree); we can't fix it.  So all we can do is patch the
     # resulting configure script.  :-(
-    verbose "$indent_str"."Patching configure for Libtool PGI 10 fortran compiler name\n";
+    push(@verbose_out, $indent_str . "Patching configure for Libtool PGI 10 fortran compiler name\n");
     $c =~ s/gfortran g95 xlf95 f95 fort ifort ifc efc pgf95 lf95 ftn/gfortran g95 xlf95 f95 fort ifort ifc efc pgfortran pgf95 lf95 ftn/g;
     $c =~ s/pgcc\* \| pgf77\* \| pgf90\* \| pgf95\*\)/pgcc* | pgf77* | pgf90* | pgf95* | pgfortran*)/g;
     $c =~ s/pgf77\* \| pgf90\* \| pgf95\*\)/pgf77* | pgf90* | pgf95* | pgfortran*)/g;
@@ -925,7 +937,7 @@ sub patch_autotools_output {
     # Libtool install; all we can do is patch the resulting configure
     # script.  :-( The following comes from the upstream patch:
     # http://lists.gnu.org/archive/html/libtool-patches/2009-11/msg00016.html
-    verbose "$indent_str"."Patching configure for Libtool PGI version number regexps\n";
+    push(@verbose_out, $indent_str . "Patching configure for Libtool PGI version number regexps\n");
     $c =~ s/\*pgCC\\ \[1-5\]\* \| \*pgcpp\\ \[1-5\]\*/*pgCC\\ [1-5]\.* | *pgcpp\\ [1-5]\.*/g;
 
     # Similar issue as above -- fix the case statements that handle the Sun
@@ -960,15 +972,45 @@ sub patch_autotools_output {
           ;;
 ";
 
-        verbose "$indent_str"."Patching configure for Sun Studio Fortran version strings ($tag)\n";
+        push(@verbose_out, $indent_str . "Patching configure for Sun Studio Fortran version strings ($tag)\n");
         $c =~ s/$search_string/$replace_string/;
     }
 
     # See http://git.savannah.gnu.org/cgit/libtool.git/commit/?id=v2.2.6-201-g519bf91 for details
     # Note that this issue was fixed in LT 2.2.8, however most distros are still using 2.2.6b
 
-    verbose "$indent_str"."Patching configure for IBM xlf libtool bug\n";
+    push(@verbose_out, $indent_str . "Patching configure for IBM xlf libtool bug\n");
     $c =~ s/(\$LD -shared \$libobjs \$deplibs \$)compiler_flags( -soname \$soname)/$1linker_flags$2/g;
+
+    #Check if we are using a recent enough libtool that supports PowerPC little endian
+    if(index($c, 'powerpc64le-*linux*)') == -1) {
+        push(@verbose_out, $indent_str . "Patching configure for PowerPC little endian support\n");
+        my $replace_string = "x86_64-*kfreebsd*-gnu|x86_64-*linux*|powerpc*-*linux*|";
+        $c =~ s/x86_64-\*kfreebsd\*-gnu\|x86_64-\*linux\*\|ppc\*-\*linux\*\|powerpc\*-\*linux\*\|/$replace_string/g;
+        $replace_string =
+        "powerpc64le-*linux*)\n\t    LD=\"\${LD-ld} -m elf32lppclinux\"\n\t    ;;\n\t  powerpc64-*linux*)";
+        $c =~ s/ppc64-\*linux\*\|powerpc64-\*linux\*\)/$replace_string/g;
+        $replace_string =
+        "powerpcle-*linux*)\n\t    LD=\"\${LD-ld} -m elf64lppc\"\n\t    ;;\n\t  powerpc-*linux*)";
+        $c =~ s/ppc\*-\*linux\*\|powerpc\*-\*linux\*\)/$replace_string/g;
+    }
+
+    # Fix consequence of broken libtool.m4
+    # see http://lists.gnu.org/archive/html/bug-libtool/2015-07/msg00002.html and
+    # https://github.com/open-mpi/ompi/issues/751
+    push(@verbose_out, $indent_str . "Patching configure for libtool.m4 bug\n");
+    # patch for libtool < 2.4.3
+    $c =~ s/# Some compilers place space between "-{L,R}" and the path.\n       # Remove the space.\n       if test \$p = \"-L\" \|\|/# Some compilers place space between "-{L,-l,R}" and the path.\n       # Remove the spaces.\n       if test \$p = \"-L\" \|\|\n          test \$p = \"-l\" \|\|/g;
+    # patch for libtool >= 2.4.3
+    $c =~ s/# Some compilers place space between "-{L,R}" and the path.\n       # Remove the space.\n       if test x-L = \"\$p\" \|\|\n          test x-R = \"\$p\"\; then/# Some compilers place space between "-{L,-l,R}" and the path.\n       # Remove the spaces.\n       if test x-L = \"x\$p\" \|\|\n          test x-l = \"x\$p\" \|\|\n          test x-R = \"x\$p\"\; then/g;
+
+    # Only write out verbose statements and a new configure if the
+    # configure content actually changed
+    return
+        if ($c eq $c_orig);
+    foreach my $str (@verbose_out) {
+        verbose($str);
+    }
 
     open(OUT, ">configure.patched") || my_die "Can't open configure.patched";
     print OUT $c;
@@ -1288,6 +1330,8 @@ foreach my $project (@{$projects}) {
         if (-d "$project->{dir}/config");
 }
 safe_system($cmd);
+
+patch_autotools_output(".");
 
 #---------------------------------------------------------------------------
 

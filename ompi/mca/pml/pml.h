@@ -13,6 +13,8 @@
  * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -91,7 +93,7 @@ struct ompi_proc_t;
  * indicates whether multiple threads may invoke this component
  * simultaneously or not.
  */
-typedef struct mca_pml_base_module_1_0_0_t * (*mca_pml_base_component_init_fn_t)(
+typedef struct mca_pml_base_module_1_0_1_t * (*mca_pml_base_component_init_fn_t)(
     int *priority,
     bool enable_progress_threads,
     bool enable_mpi_threads);
@@ -287,7 +289,7 @@ typedef int (*mca_pml_base_module_mrecv_fn_t)(
  *  @return                 OMPI_SUCCESS or failure status.
  */
 typedef int (*mca_pml_base_module_isend_init_fn_t)(
-    void *buf,
+    const void *buf,
     size_t count,
     struct ompi_datatype_t *datatype,
     int dst,
@@ -312,7 +314,7 @@ typedef int (*mca_pml_base_module_isend_init_fn_t)(
  *  @return                 OMPI_SUCCESS or failure status.
  */
 typedef int (*mca_pml_base_module_isend_fn_t)(
-    void *buf,
+    const void *buf,
     size_t count,
     struct ompi_datatype_t *datatype,
     int dst,
@@ -336,7 +338,7 @@ typedef int (*mca_pml_base_module_isend_fn_t)(
  *  @return                 OMPI_SUCCESS or failure status.
  */
 typedef int (*mca_pml_base_module_send_fn_t)(
-    void *buf,
+    const void *buf,
     size_t count,
     struct ompi_datatype_t *datatype,
     int dst,
@@ -477,13 +479,18 @@ typedef int (*mca_pml_base_module_dump_fn_t)(
  */
 typedef int (*mca_pml_base_module_ft_event_fn_t) (int status);
 
-
+/**
+ * pml module flags
+ */
+/** PML requires requires all procs in the job on the first call to
+ * add_procs */
+#define MCA_PML_BASE_FLAG_REQUIRE_WORLD 0x00000001
 
 /**
  *  PML instance.
  */
 
-struct mca_pml_base_module_1_0_0_t {
+struct mca_pml_base_module_1_0_1_t {
 
     /* downcalls from MCA to PML */
     mca_pml_base_module_add_procs_fn_t    pml_add_procs;
@@ -517,9 +524,10 @@ struct mca_pml_base_module_1_0_0_t {
     /* maximum constant sizes */
     uint32_t                              pml_max_contextid;
     int                                   pml_max_tag;
+    int                                   pml_flags;
 };
-typedef struct mca_pml_base_module_1_0_0_t mca_pml_base_module_1_0_0_t;
-typedef mca_pml_base_module_1_0_0_t mca_pml_base_module_t;
+typedef struct mca_pml_base_module_1_0_1_t mca_pml_base_module_1_0_1_t;
+typedef mca_pml_base_module_1_0_1_t mca_pml_base_module_t;
 
 /*
  * Macro for use in components that are of type pml
@@ -544,6 +552,10 @@ typedef mca_pml_base_module_1_0_0_t mca_pml_base_module_t;
 
 OMPI_DECLSPEC extern mca_pml_base_module_t mca_pml;
 
+static inline bool mca_pml_base_requires_world (void)
+{
+    return !!(mca_pml.pml_flags & MCA_PML_BASE_FLAG_REQUIRE_WORLD);
+}
 
 END_C_DECLS
 #endif /* MCA_PML_H */

@@ -13,6 +13,8 @@
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights
  *                         reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/memchecker.h"
 
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Rsend = PMPI_Rsend
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Rsend PMPI_Rsend
 #endif
 
 static const char FUNC_NAME[] = "MPI_Rsend";
@@ -76,8 +77,7 @@ int MPI_Rsend(const void *buf, int count, MPI_Datatype type, int dest, int tag, 
     }
 
     OPAL_CR_ENTER_LIBRARY();
-    /* XXX -- CONST -- do not cast away const -- update mca/pml */
-    rc = MCA_PML_CALL(send((void *) buf, count, type, dest, tag,
+    rc = MCA_PML_CALL(send(buf, count, type, dest, tag,
                            MCA_PML_BASE_SEND_READY, comm));
     OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

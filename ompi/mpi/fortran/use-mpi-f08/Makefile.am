@@ -105,7 +105,6 @@ mpi_api_files = \
         bcast_f08.F90 \
         bsend_f08.F90 \
         bsend_init_f08.F90 \
-        buffer_detach.c \
         buffer_attach_f08.F90 \
         buffer_detach_f08.F90 \
         cancel_f08.F90 \
@@ -396,9 +395,13 @@ mpi_api_files += \
         file_get_view_f08.F90 \
         file_iread_at_f08.F90 \
         file_iread_f08.F90 \
+        file_iread_at_all_f08.F90 \
+        file_iread_all_f08.F90 \
         file_iread_shared_f08.F90 \
         file_iwrite_at_f08.F90 \
         file_iwrite_f08.F90 \
+        file_iwrite_at_all_f08.F90 \
+        file_iwrite_all_f08.F90 \
         file_iwrite_shared_f08.F90 \
         file_open_f08.F90 \
         file_preallocate_f08.F90 \
@@ -802,6 +805,7 @@ libmpi_usempif08_la_SOURCES = \
         mpi-f08.F90 \
         mpi-f-interfaces-bind.h pmpi-f-interfaces-bind.h \
         attr-fn-f08-callback-interfaces.h \
+        buffer_detach.c \
         conversion-fn-null-f08-interface.h \
         constants.h \
         constants.c

@@ -48,13 +48,14 @@
 #include "opal/mca/mpool/mpool.h"
 #include "opal/mca/btl/base/btl_base_error.h"
 #include "opal/mca/btl/base/base.h"
+#include "opal/runtime/opal_progress_threads.h"
 
 #include "connect/connect.h"
 
 BEGIN_C_DECLS
 
-#define HAVE_XRC (1 == OPAL_HAVE_CONNECTX_XRC)
-#define ENABLE_DYNAMIC_SL (1 == OPAL_ENABLE_DYNAMIC_SL)
+#define HAVE_XRC (OPAL_HAVE_CONNECTX_XRC || OPAL_HAVE_CONNECTX_XRC_DOMAINS)
+#define ENABLE_DYNAMIC_SL OPAL_ENABLE_DYNAMIC_SL
 
 #define MCA_BTL_IB_LEAVE_PINNED 1
 #define IB_DEFAULT_GID_PREFIX 0xfe80000000000000ll
@@ -227,9 +228,7 @@ struct mca_btl_openib_component_t {
     int     apm_ports;
     unsigned int buffer_alignment;    /**< Preferred communication buffer alignment in Bytes (must be power of two) */
     int32_t error_counter;           /**< Counts number on error events that we got on all devices */
-    int async_pipe[2];               /**< Pipe for comunication with async event thread */
-    int async_comp_pipe[2];          /**< Pipe for async thread comunication with main thread */
-    pthread_t   async_thread;        /**< Async thread that will handle fatal errors */
+    opal_event_base_t *async_evbase; /**< Async event base */
     bool use_async_event_thread;     /**< Use the async event handler */
     mca_btl_openib_srq_manager_t srq_manager;     /**< Hash table for all BTL SRQs */
 #if BTL_OPENIB_FAILOVER_ENABLED
@@ -410,6 +409,8 @@ typedef struct mca_btl_openib_device_t {
     uint64_t mem_reg_max, mem_reg_active;
     /* Device is ready for use */
     bool ready_for_use;
+    /* Async event */
+    opal_event_t async_event;
 } mca_btl_openib_device_t;
 OBJ_CLASS_DECLARATION(mca_btl_openib_device_t);
 
@@ -875,6 +876,18 @@ int mca_btl_openib_post_srr(mca_btl_openib_module_t* openib_btl, const int qp);
 const char* btl_openib_get_transport_name(mca_btl_openib_transport_type_t transport_type);
 
 /**
+ * Get an endpoint for a process
+ *
+ * @param btl (IN)    BTL module
+ * @param proc (IN)   opal process object
+ *
+ * This function will return an existing endpoint if one exists otherwise it will allocate
+ * a new endpoint and return it.
+ */
+struct mca_btl_base_endpoint_t *mca_btl_openib_get_ep (struct mca_btl_base_module_t *btl,
+                                                       struct opal_proc_t *proc);
+
+/**
  * Get a transport type of btl.
  */
 
@@ -894,6 +907,15 @@ static inline int qp_cq_prio(const int qp)
 
 #define BTL_OPENIB_RDMA_QP(QP) \
     ((QP) == mca_btl_openib_component.rdma_qp)
+
+/**
+ * Run function as part of opal_progress()
+ *
+ * @param[in] fn    function to run
+ * @param[in] arg   function data
+ */
+int mca_btl_openib_run_in_main (void *(*fn)(void *), void *arg);
+
 
 END_C_DECLS
 

@@ -3,7 +3,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- *
+ * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -148,7 +148,7 @@ int oshmem_shmem_init(int argc, char **argv, int requested, int *provided)
         if (!ompi_mpi_initialized && !ompi_mpi_finalized) {
             ret = ompi_mpi_init(argc, argv, requested, provided);
         }
-        MPI_Comm_dup(MPI_COMM_WORLD, &oshmem_comm_world);
+        PMPI_Comm_dup(MPI_COMM_WORLD, &oshmem_comm_world);
 
         if (OSHMEM_SUCCESS == ret) {
             ret = _shmem_init(argc, argv, requested, provided);
@@ -237,11 +237,6 @@ static int _shmem_init(int argc, char **argv, int requested, int *provided)
         goto error;
     }
 
-    /* We need to do this anyway.
-     * This place requires to be reviewed and more elegant way is expected
-     */
-    ompi_proc_local_proc = (ompi_proc_t*) oshmem_proc_local_proc;
-
     /* Register the OSHMEM layer's MCA parameters */
     if (OSHMEM_SUCCESS != (ret = oshmem_shmem_register_params())) {
         error = "oshmem_info_register: oshmem_register_params failed";
@@ -296,11 +291,8 @@ static int _shmem_init(int argc, char **argv, int requested, int *provided)
         goto error;
     }
 
-    /* identify the architectures of remote procs and setup
-     * their datatype convertors, if required
-     */
-    if (OSHMEM_SUCCESS != (ret = oshmem_proc_set_arch())) {
-        error = "oshmem_proc_set_arch failed";
+    if (OSHMEM_SUCCESS != (ret = oshmem_proc_group_init())) {
+        error = "oshmem_proc_group_init() failed";
         goto error;
     }
 
@@ -309,20 +301,6 @@ static int _shmem_init(int argc, char **argv, int requested, int *provided)
     if (OSHMEM_SUCCESS != ret) {
         error = "SPML control failed";
         goto error;
-    }
-
-    /* There is issue with call add_proc twice so
-     * we need to use btl info got from PML add_procs() before call of SPML add_procs()
-     */
-    {
-        ompi_proc_t** procs = NULL;
-        size_t nprocs = 0;
-        procs = ompi_proc_world(&nprocs);
-        while (nprocs--) {
-            oshmem_group_all->proc_array[nprocs]->proc_endpoints[OMPI_PROC_ENDPOINT_TAG_BML] =
-                    procs[nprocs]->proc_endpoints[OMPI_PROC_ENDPOINT_TAG_BML];
-        }
-        free(procs);
     }
 
     ret =

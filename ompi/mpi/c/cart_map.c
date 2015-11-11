@@ -14,6 +14,8 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2012-2013 Inria.  All rights reserved.
+ * Copyright (c) 2015      Research Organization for Information Science
+ *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,12 +32,11 @@
 #include "ompi/mca/topo/topo.h"
 #include "ompi/memchecker.h"
 
-#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OMPI_BUILD_MPI_PROFILING
+#if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Cart_map = PMPI_Cart_map
 #endif
-
-#if OMPI_PROFILING_DEFINES
-#include "ompi/mpi/c/profile/defines.h"
+#define MPI_Cart_map PMPI_Cart_map
 #endif
 
 static const char FUNC_NAME[] = "MPI_Cart_map";
@@ -75,9 +76,8 @@ int MPI_Cart_map(MPI_Comm comm, int ndims, const int dims[],
            newrank = rank */
         *newrank = ompi_comm_rank(comm);
     } else {
-        /* XXX -- CONST -- do not cast away const -- update mca/topo */
-        err = comm->c_topo->topo.cart.cart_map(comm, ndims, (int *) dims,
-                                               (int *) periods, newrank);
+        err = comm->c_topo->topo.cart.cart_map(comm, ndims, dims,
+                                               periods, newrank);
     }
 
     OPAL_CR_EXIT_LIBRARY();

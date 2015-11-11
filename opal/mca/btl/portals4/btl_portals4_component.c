@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2010-2012 Sandia National Laboratories.  All rights reserved.
- * Copyright (c) 2014      Intel, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Intel, Inc. All rights reserved.
  * Copyright (c) 2014      Bull SAS.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
@@ -221,7 +221,8 @@ mca_btl_portals4_component_open(void)
     mca_btl_portals4_module.super.btl_min_rdma_pipeline_size = 0;
     mca_btl_portals4_module.super.btl_flags =
         MCA_BTL_FLAGS_RDMA |
-        MCA_BTL_FLAGS_RDMA_MATCHED;
+        MCA_BTL_FLAGS_RDMA_MATCHED |
+        MCA_BTL_FLAGS_SEND;
 
     mca_btl_portals4_module.super.btl_registration_handle_size = sizeof (mca_btl_base_registration_handle_t);
 
@@ -250,6 +251,15 @@ mca_btl_portals4_component_open(void)
     mca_btl_portals4_module.long_overflow_me_h = PTL_INVALID_HANDLE;
     mca_btl_portals4_module.portals_outstanding_ops = 0;
     mca_btl_portals4_module.recv_idx = (ptl_pt_index_t) ~0UL;
+
+    if (1 == mca_btl_portals4_component.use_logical) {
+        /*
+         * set the MCA_BTL_FLAGS_SINGLE_ADD_PROCS flag here in the default
+         * module, so it gets copied into the module for each Portals4
+         * interface during init().
+         */
+        mca_btl_portals4_module.super.btl_flags |= MCA_BTL_FLAGS_SINGLE_ADD_PROCS;
+    }
 
     return OPAL_SUCCESS;
 }
@@ -422,7 +432,7 @@ static mca_btl_base_module_t** mca_btl_portals4_component_init(int *num_btls,
                   ptl_process_ids[interface].rank,
                   ptl_process_ids[interface].phys.nid, ptl_process_ids[interface].phys.pid));
     }
-    OPAL_MODEX_SEND(ret, PMIX_SYNC_REQD, PMIX_GLOBAL,
+    OPAL_MODEX_SEND(ret, OPAL_PMIX_GLOBAL,
                     &mca_btl_portals4_component.super.btl_version,
                     ptl_process_ids, mca_btl_portals4_component.num_btls * sizeof(ptl_process_t));
     if (OPAL_SUCCESS != ret) {
@@ -440,6 +450,8 @@ static mca_btl_base_module_t** mca_btl_portals4_component_init(int *num_btls,
 
     opal_output_verbose(1, opal_btl_base_framework.framework_output, "The btl portals4 component has been initialized and uses %d NI(s)",
         mca_btl_portals4_component.num_btls);
+
+    mca_btl_portals4_component.need_init = 1;
 
     return btls;
 

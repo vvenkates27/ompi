@@ -50,12 +50,12 @@
 int mca_topo_base_cart_create(mca_topo_base_module_t *topo,
                               ompi_communicator_t* old_comm,
                               int ndims,
-                              int *dims,
-                              int *periods,
+                              const int *dims,
+                              const int *periods,
                               bool reorder,
                               ompi_communicator_t** comm_topo)
 {
-    int nprocs = 1, i, *p, new_rank, num_procs, ret;
+    int nprocs = 1, i, new_rank, num_procs, ret;
     ompi_communicator_t *new_comm;
     ompi_proc_t **topo_procs = NULL;
     mca_topo_base_comm_cart_2_2_0_t* cart;
@@ -65,12 +65,11 @@ int mca_topo_base_cart_create(mca_topo_base_module_t *topo,
     assert(topo->type == OMPI_COMM_CART);
 
     /* Calculate the number of processes in this grid */
-    p = dims;
-    for (i = 0; i < ndims; ++i, ++p) {
-        if(*p <= 0) {
+    for (i = 0; i < ndims; ++i) {
+        if(dims[i] <= 0) {
             return OMPI_ERROR;
         }
-        nprocs *= *p;
+        nprocs *= dims[i];
     }
 
     /* check for the error condition */
@@ -161,12 +160,6 @@ int mca_topo_base_cart_create(mca_topo_base_module_t *topo,
         return MPI_ERR_INTERN;
     }
 
-    assert(NULL == new_comm->c_topo);
-    assert(!(new_comm->c_flags & OMPI_COMM_CART));
-    new_comm->c_topo           = topo;
-    new_comm->c_topo->mtc.cart = cart;
-    new_comm->c_topo->reorder  = reorder;
-    new_comm->c_flags         |= OMPI_COMM_CART;
     ret = ompi_comm_enable(old_comm, new_comm,
                            new_rank, num_procs, topo_procs);
     if (OMPI_SUCCESS != ret) {
@@ -181,6 +174,10 @@ int mca_topo_base_cart_create(mca_topo_base_module_t *topo,
         return ret;
     }
 
+    new_comm->c_topo           = topo;
+    new_comm->c_topo->mtc.cart = cart;
+    new_comm->c_topo->reorder  = reorder;
+    new_comm->c_flags         |= OMPI_COMM_CART;
     *comm_topo = new_comm;
 
     if( MPI_UNDEFINED == new_rank ) {

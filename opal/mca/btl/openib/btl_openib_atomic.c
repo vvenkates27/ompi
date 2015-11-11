@@ -22,7 +22,7 @@
 static int mca_btl_openib_atomic_internal (struct mca_btl_base_module_t *btl, struct mca_btl_base_endpoint_t *endpoint,
 					   void *local_address, uint64_t remote_address, mca_btl_base_registration_handle_t *local_handle,
 					   mca_btl_base_registration_handle_t *remote_handle, enum ibv_wr_opcode opcode,
-					   int64_t operand, int operand2, int flags, int order, mca_btl_base_rdma_completion_fn_t cbfunc,
+					   int64_t operand, int64_t operand2, int flags, int order, mca_btl_base_rdma_completion_fn_t cbfunc,
 					   void *cbcontext, void *cbdata)
 {
     mca_btl_openib_get_frag_t* frag = NULL;
@@ -73,7 +73,12 @@ static int mca_btl_openib_atomic_internal (struct mca_btl_base_module_t *btl, st
 
 #if HAVE_XRC
     if (MCA_BTL_XRC_ENABLED && BTL_OPENIB_QP_TYPE_XRC(qp)) {
-        frag->sr_desc.xrc_remote_srq_num=endpoint->rem_info.rem_srqs[qp].rem_srq_num;
+#if OPAL_HAVE_CONNECTX_XRC_DOMAINS
+        frag->sr_desc.qp_type.xrc.remote_srqn = endpoint->rem_info.rem_srqs[qp].rem_srq_num;
+#else
+        frag->sr_desc.xrc_remote_srq_num = endpoint->rem_info.rem_srqs[qp].rem_srq_num;
+#endif
+
     }
 #endif
 

@@ -140,9 +140,12 @@ ompi/debuggers/predefined_pad_test
 ompi/include/mpi.h
 ompi/include/mpif-config.h
 ompi/include/mpif.h
+ompi/include/mpif-c-constants-decl.h
+ompi/include/mpif-c-constants.h
 ompi/include/mpif-common.h
 ompi/include/mpi-ext.h
 ompi/include/mpif-ext.h
+ompi/include/mpif-f08-types.h
 ompi/include/mpif-handles.h
 ompi/include/mpif-io-constants.h
 ompi/include/mpif-constants.h
@@ -231,6 +234,9 @@ ompi/mpiext/example/tests/progress_mpifh
 ompi/mpiext/example/tests/progress_usempi
 ompi/mpiext/example/tests/progress_usempif08
 
+ompi/mpiext/cuda/c/MPIX_Query_cuda_support.3
+ompi/mpiext/cuda/c/mpiext_cuda_c.h
+
 ompi/tools/mpisync/mpisync
 ompi/tools/mpisync/mpirun_prof
 ompi/tools/mpisync/ompi_timing_post
@@ -293,6 +299,10 @@ opal/mca/hwloc/hwloc*/hwloc/include/hwloc/autogen/config.h
 opal/mca/hwloc/hwloc*/hwloc/include/private/autogen/config.h
 
 opal/mca/installdirs/config/install_dirs.h
+
+opal/mca/pmix/pmix1xx/pmix/include/pmix/autogen/config.h
+opal/mca/pmix/pmix1xx/pmix/include/private/autogen/config.h
+opal/mca/pmix/pmix1xx/pmix/include/private/autogen/config.h.in
 
 opal/tools/opal-checkpoint/opal-checkpoint
 opal/tools/opal-checkpoint/opal-checkpoint.1
@@ -503,9 +513,27 @@ oshmem/shmem/java/java/shmem
 oshmem/shmem/java/java/shmem_Addr.h
 oshmem/shmem/java/java/shmem_PSync.h
 
+oshmem/shmem/man/man3/shmem_*.3
+oshmem/shmem/man/man3/OpenSHMEM.3
+oshmem/shmem/man/man3/intro_shmem.3
+oshmem/shmem/man/man3/_my_pe.3
+oshmem/shmem/man/man3/_num_pes.3
+oshmem/shmem/man/man3/shfree.3
+oshmem/shmem/man/man3/shmalloc.3
+oshmem/shmem/man/man3/shmemalign.3
+oshmem/shmem/man/man3/shrealloc.3
+oshmem/shmem/man/man3/start_pes.3
+oshmem/shmem/man/man3/.dir-stamp
+
 oshmem/tools/oshmem_info/oshmem_info
 oshmem/tools/oshmem_info/oshmem_info.1
 
+oshmem/tools/wrappers/oshcc.1
+oshmem/tools/wrappers/oshfort.1
+oshmem/tools/wrappers/oshrun.1
+oshmem/tools/wrappers/shmemcc.1
+oshmem/tools/wrappers/shmemfort.1
+oshmem/tools/wrappers/shmemrun.1
 oshmem/tools/wrappers/shmemcc-wrapper-data.txt
 oshmem/tools/wrappers/shmemfort-wrapper-data.txt
 
@@ -560,6 +588,8 @@ test/dss/dss_print
 test/event/signal-test
 test/event/event-test
 test/event/time-test
+
+test/monitoring/monitoring_test
 
 test/mpi/environment/chello
 
